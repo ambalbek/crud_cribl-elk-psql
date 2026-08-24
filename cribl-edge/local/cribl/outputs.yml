@@ -1,0 +1,41 @@
+outputs:
+  devnull:
+    type: devnull
+  default:
+    defaultId: es_direct
+    type: default
+  logstash_traces:
+    type: http
+    disabled: false
+    url: "http://logstash:5044"
+    format: json
+    concurrency: 5
+    maxPayloadSizeKB: 4096
+    flushPeriodSec: 1
+    method: POST
+  logstash_metrics:
+    type: http
+    disabled: false
+    url: "http://logstash:5045"
+    format: json
+    concurrency: 5
+    maxPayloadSizeKB: 4096
+    flushPeriodSec: 1
+    method: POST
+  logstash_logs:
+    type: http
+    disabled: false
+    url: "http://logstash:5046"
+    format: json
+    concurrency: 5
+    maxPayloadSizeKB: 4096
+    flushPeriodSec: 1
+    method: POST
+  es_direct:
+    type: elastic
+    disabled: false
+    elasticUrl: "http://elasticsearch:9200"
+    index: "otel-{_dataType}-{_index}"
+    concurrency: 5
+    maxPayloadSizeKB: 4096
+    flushPeriodSec: 1

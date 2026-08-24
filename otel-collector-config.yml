@@ -1,0 +1,49 @@
+# otel-collector-config.yml — OpenTelemetry Collector configuration
+#
+# Receives traces/metrics/logs from all three services via OTLP,
+# and exports them to Elasticsearch.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT:-development}
+        action: upsert
+
+exporters:
+  debug:
+    verbosity: normal
+
+  elasticsearch:
+    endpoints: ["http://elasticsearch:9200"]
+    mapping:
+      mode: ecs
+    sending_queue:
+      enabled: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [debug, elasticsearch]
+    metrics:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [debug, elasticsearch]

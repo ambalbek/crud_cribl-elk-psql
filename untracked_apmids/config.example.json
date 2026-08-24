@@ -1,0 +1,65 @@
+{
+  "auth": {
+    "cribl_url": "https://main-myorg.cribl.cloud",
+    "username": "",
+    "password": ""
+  },
+
+  "capture": {
+    "groups": ["prod-worker-group"],
+    "seconds": 30,
+    "max_events": 5000,
+    "level": 3,
+    "rounds": 10,
+    "interval": 120,
+    "appid_field": "apmId"
+  },
+
+  "matching": {
+    "mode": "exact",
+    "default_output": "azure_blob:foo-company-default"
+  },
+
+  "output": {
+    "format": "csv",
+    "append": false,
+    "lookup": "APP_foo.json"
+  },
+
+  "blob_storage": {
+    "connection_string": "",
+    "account_url": "https://ACCOUNT.blob.core.windows.net",
+    "account_name": "",
+    "account_key": "",
+    "sas_token": "",
+    "tenant_id": "",
+    "client_id": "",
+    "client_secret": "",
+    "container": "default"
+  },
+
+  "source_elasticsearch": {
+    "url": "https://elk.internal:9200",
+    "index": "logs-k8s-container-all*",
+    "api_key": "",
+    "username": "",
+    "password": ""
+  },
+
+  "elasticsearch": {
+    "url": "https://elk.internal:9200",
+    "index": "cribl-untracked-appids",
+    "api_key": "",
+    "username": "",
+    "password": ""
+  },
+
+  "logging": {
+    "log_file": "find_default_appids.log",
+    "verbose": false
+  },
+
+  "connection": {
+    "verify_ssl": true
+  }
+}

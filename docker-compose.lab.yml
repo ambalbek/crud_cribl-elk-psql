@@ -1,0 +1,119 @@
+# docker-compose.lab.yml — Lightweight lab for local development & testing
+#
+# Usage:
+#   docker compose -f docker-compose.lab.yml up -d
+#   python app.py                                    # run the app locally
+#
+# Endpoints:
+#   PostgreSQL ........ localhost:5432  (cribl / cribl)
+#   Cribl Stream ...... localhost:9000  (admin / admin)
+#   Elasticsearch ..... localhost:9200  (elastic / changeme)
+#   Kibana ............ localhost:5601
+#   OTel Collector .... localhost:4317 (gRPC), localhost:4318 (HTTP)
+#
+# Tear down:
+#   docker compose -f docker-compose.lab.yml down -v
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cribl
+      POSTGRES_USER: cribl
+      POSTGRES_PASSWORD: cribl
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - lab_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cribl"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ── Cribl Stream (leader, single-instance mode) ──────────────────────────────
+  cribl:
+    image: cribl/cribl:latest
+    restart: unless-stopped
+    environment:
+      - CRIBL_DIST_MODE=master
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - lab_cribl_data:/opt/cribl/state
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── Elasticsearch ────────────────────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - ELASTIC_PASSWORD=changeme
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - lab_es_data:/usr/share/elasticsearch/data
+      - ./elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -u elastic:changeme http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── ES Init (set kibana_system password) ──────────────────────────────────────
+  es-init:
+    image: curlimages/curl:latest
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["sh", "-c", "curl -sf -u elastic:changeme -X POST http://elasticsearch:9200/_security/user/kibana_system/_password -H 'Content-Type: application/json' -d '{\"password\":\"changeme\"}' && echo ' kibana_system password set'"]
+
+  # ── Kibana ───────────────────────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=changeme
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=066cd48dd5f9e39cd4c7e5ff53992348
+      - XPACK_SECURITY_ENCRYPTIONKEY=e28e928cae761da121919351042ee770
+      - XPACK_REPORTING_ENCRYPTIONKEY=16da1090c0454e5047cb1b559912c2d3
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      es-init:
+        condition: service_completed_successfully
+
+  # ── OpenTelemetry Collector ──────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+volumes:
+  lab_pg_data:
+  lab_es_data:
+  lab_cribl_data:
