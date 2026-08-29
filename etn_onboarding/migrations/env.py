@@ -15,10 +15,8 @@ logger = logging.getLogger("alembic.env")
 
 def get_engine():
     try:
-        # Flask-Migrate >= 3.x
         return current_app.extensions["migrate"].db.get_engine()
     except (TypeError, AttributeError):
-        # Older Flask-Migrate
         return current_app.extensions["migrate"].db.engine
 
 
@@ -32,16 +30,17 @@ def get_engine_url():
 config.set_main_option("sqlalchemy.url", get_engine_url())
 target_db = current_app.extensions["migrate"].db
 
-# Model metadata for autogenerate support
-target_metadata = target_db.metadata
+# Only use model metadata for autogenerate; during normal upgrade/downgrade
+# use a bare MetaData to prevent SQLAlchemy from auto-creating enum types.
+_is_autogenerate = getattr(config.cmd_opts, "autogenerate", False) if hasattr(config, "cmd_opts") else False
+if _is_autogenerate:
+    target_metadata = target_db.metadata
+else:
+    from sqlalchemy import MetaData
+    target_metadata = MetaData()
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    Configures the context with just a URL and not an Engine.
-    Calls to context.execute() emit the given string to the script output.
-    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -55,11 +54,6 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    Creates an Engine and associates a connection with the context.
-    """
-
     def process_revision_directives(context, revision, directives):
         if getattr(config.cmd_opts, "autogenerate", False):
             script = directives[0]

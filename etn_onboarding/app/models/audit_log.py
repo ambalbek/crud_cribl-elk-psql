@@ -24,7 +24,7 @@ class AuditLog(db.Model):
         index=True,
     )
     stage = db.Column(
-        Enum(RequestStatus, name="request_status_enum", create_constraint=False),
+        Enum(RequestStatus, name="request_status_enum", create_type=False),
         nullable=False,
     )
     action = db.Column(String(256), nullable=False)

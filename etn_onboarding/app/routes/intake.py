@@ -2,6 +2,7 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
+from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus, AuditLog
 from app.services.state_machine import transition_request, InvalidTransitionError
@@ -15,6 +16,7 @@ VALID_ENVIRONMENTS = {"dev", "stage", "prod"}
 
 
 @intake_bp.route("/", methods=["POST"])
+@require_role("requester")
 def submit_request():
     """Submit a new onboarding request.
 
@@ -53,6 +55,8 @@ def submit_request():
         status=RequestStatus.intake_pending,
         form_data=form_data,
     )
+    db.session.add(onboarding_req)
+    db.session.flush()
 
     audit_entry = AuditLog(
         request_id=onboarding_req.id,
@@ -62,8 +66,6 @@ def submit_request():
         outcome="success",
         metadata_={"source": "intake_form"},
     )
-
-    db.session.add(onboarding_req)
     db.session.add(audit_entry)
     db.session.commit()
 
@@ -78,6 +80,7 @@ def submit_request():
 
 
 @intake_bp.route("/", methods=["GET"])
+@require_role("reader")
 def list_requests():
     """List and filter the intake queue.
 
@@ -140,6 +143,7 @@ def list_requests():
 
 
 @intake_bp.route("/<uuid:request_id>/validate", methods=["POST"])
+@require_role("approver")
 def validate_intake(request_id):
     """Validate intake form fields and transition the request to intake_validated.
 

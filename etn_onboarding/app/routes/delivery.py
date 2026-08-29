@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 
+from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus, DeliveryJob
 from app.services.state_machine import transition_request, InvalidTransitionError
@@ -22,12 +23,9 @@ def _get_request_or_404(request_id):
 
 
 @delivery_bp.route("/<uuid:request_id>/collection", methods=["POST"])
+@require_role("platform_admin")
 def trigger_collection(request_id):
-    """Trigger a Cribl Edge configuration job and transition to delivery_collection.
-
-    Creates a ``DeliveryJob`` of type ``cribl_edge`` and invokes the
-    ``cribl_client`` service stub.
-    """
+    """Trigger a Cribl Edge configuration job and transition to delivery_collection."""
     onboarding_req = _get_request_or_404(request_id)
     if not onboarding_req:
         return jsonify({"error": "Request not found"}), 404
@@ -83,12 +81,9 @@ def trigger_collection(request_id):
 
 
 @delivery_bp.route("/<uuid:request_id>/routing", methods=["POST"])
+@require_role("platform_admin")
 def trigger_routing(request_id):
-    """Trigger an ETN Portal routing job and transition to delivery_routing.
-
-    Creates a ``DeliveryJob`` of type ``etn_portal`` and invokes the
-    ``etn_portal_client`` service stub.
-    """
+    """Trigger an ETN Portal routing job and transition to delivery_routing."""
     onboarding_req = _get_request_or_404(request_id)
     if not onboarding_req:
         return jsonify({"error": "Request not found"}), 404
@@ -145,11 +140,12 @@ def trigger_routing(request_id):
 
 
 @delivery_bp.route("/<uuid:request_id>/storage", methods=["POST"])
+@require_role("platform_admin")
 def trigger_storage(request_id):
-    """Trigger a Harness blob storage job and transition to delivery_storage.
+    """Transition to delivery_storage.
 
-    Creates a ``DeliveryJob`` of type ``harness_blob`` and invokes the
-    ``harness_client`` service stub.
+    Blob containers are created manually — this endpoint only records the
+    state transition.  A storage verification gate will be added in Phase 2.
     """
     onboarding_req = _get_request_or_404(request_id)
     if not onboarding_req:
@@ -165,47 +161,21 @@ def trigger_storage(request_id):
             actor=actor,
             action="trigger_storage",
         )
+        db.session.commit()
     except InvalidTransitionError as exc:
         return jsonify({"error": str(exc)}), 409
 
-    job = DeliveryJob(
-        request_id=onboarding_req.id,
-        job_type="harness_blob",
-        status="running",
-        started_at=datetime.now(timezone.utc),
-    )
-    db.session.add(job)
-    db.session.flush()
-
-    try:
-        result = services.harness.trigger_blob_storage(
-            apm_id=onboarding_req.apm_id,
-            app_name=onboarding_req.app_name,
-            environment=onboarding_req.environment,
-        )
-        job.status = "success"
-        job.result = result
-        job.completed_at = datetime.now(timezone.utc)
-    except Exception as exc:
-        logger.exception("Harness blob provisioning failed: request_id=%s", request_id)
-        job.status = "failed"
-        job.result = {"error": str(exc)}
-        job.completed_at = datetime.now(timezone.utc)
-
-    db.session.commit()
-
-    logger.info("Storage job completed: request_id=%s job_id=%s status=%s", request_id, job.id, job.status)
+    logger.info("Storage transition recorded: request_id=%s", request_id)
 
     return jsonify({
         "id": str(onboarding_req.id),
         "status": onboarding_req.status.value,
-        "job_id": str(job.id),
-        "job_status": job.status,
         "audit_id": str(audit_entry.id),
     }), 200
 
 
 @delivery_bp.route("/<uuid:request_id>/complete", methods=["POST"])
+@require_role("platform_admin")
 def mark_delivery_complete(request_id):
     """Mark all delivery phases as done and transition to delivery_complete.
 

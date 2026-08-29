@@ -57,8 +57,10 @@ ROLE_RM     = SCRIPT_DIR / "role_rm.py"
 
 # Microservice base URLs — set via env in docker-compose; fall back to empty
 # so the portal degrades gracefully to subprocess mode when running standalone.
-CRIBL_SERVICE_URL = os.environ.get("CRIBL_SERVICE_URL", "").rstrip("/")
-ECE_SERVICE_URL   = os.environ.get("ECE_SERVICE_URL",   "").rstrip("/")
+CRIBL_SERVICE_URL      = os.environ.get("CRIBL_SERVICE_URL", "").rstrip("/")
+ECE_SERVICE_URL        = os.environ.get("ECE_SERVICE_URL",   "").rstrip("/")
+ETN_ONBOARDING_URL     = os.environ.get("ETN_ONBOARDING_URL", "").rstrip("/")
+ETN_ONBOARDING_TOKEN   = os.environ.get("ETN_ONBOARDING_TOKEN", "")
 
 
 # ── Logging setup ──────────────────────────────────────────────────────────────
@@ -292,7 +294,7 @@ def mask_cmd(cmd: list, sensitive: set) -> str:
 def es_index(doc: dict, config: dict) -> str:
     """Write a document to the configured ES datastream. Returns the ES _id."""
     ds       = config.get("datastream", {})
-    base_url = ds.get("elk_url", "").strip().rstrip("/")
+    base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
     index    = ds.get("index", "logs-cribl-onboarding-requests")
     skip_ssl = ds.get("skip_ssl", False)
     timeout  = ds.get("timeout", 30)
@@ -315,8 +317,8 @@ def es_index(doc: dict, config: dict) -> str:
 
     headers = {"Content-Type": "application/json"}
     token    = ds.get("token",    "").strip()
-    username = ds.get("username", "").strip()
-    password = ds.get("password", "").strip()
+    username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
+    password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
         headers["Authorization"] = f"ApiKey {token}"
     elif username:
@@ -351,7 +353,7 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
             db.session.rollback()
             log.error("PSQL status update failed — %s: %s", type(exc).__name__, exc)
     ds       = config.get("datastream", {})
-    base_url = ds.get("elk_url", "").strip().rstrip("/")
+    base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
     index    = ds.get("index", "logs-cribl-onboarding-requests")
     skip_ssl = ds.get("skip_ssl", False)
     timeout  = ds.get("timeout", 30)
@@ -368,8 +370,8 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
 
     headers = {"Content-Type": "application/json"}
     token    = ds.get("token",    "").strip()
-    username = ds.get("username", "").strip()
-    password = ds.get("password", "").strip()
+    username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
+    password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
         headers["Authorization"] = f"ApiKey {token}"
 
@@ -699,7 +701,16 @@ def health():
 @login_required
 def portal_index():
     config = load_config()
-    return render_template("request.html", iiq_url=config.get("iiq_url", ""))
+    workspaces = {
+        k: v for k, v in config.get("workspaces", {}).items()
+        if not k.startswith("_")
+    }
+    return render_template(
+        "request.html",
+        iiq_url=config.get("iiq_url", ""),
+        workspaces=workspaces,
+        config=config,
+    )
 
 
 @app.route("/cribl/portal/api/submit", methods=["POST"])
@@ -721,6 +732,7 @@ def portal_submit():
     region     = (data.get("region")   or "").strip()
     log_dests  = [d for d in (data.get("log_destinations") or []) if d]
     log_types  = [t for t in (data.get("log_types") or []) if t]
+    data_type  = (data.get("data_type") or "").strip()
     groups     = [grp for grp in (data.get("groups") or []) if grp]
     worker_grp = (data.get("worker_group") or "default").strip()
     dest       = (data.get("dest") or "").strip()
@@ -750,6 +762,128 @@ def portal_submit():
     except Exception as exc:
         return jsonify({"errors": [f"Could not load config.json: {exc}"]}), 500
 
+    # ── Forward to etn_onboarding service when configured ────────────────────
+    workspace = (data.get("workspace") or "").strip()
+
+    if ETN_ONBOARDING_URL:
+        # Derive environment from workspace name
+        ws_cfg = config.get("workspaces", {}).get(workspace, {})
+        ws_env = "prod" if ws_cfg.get("require_allow") else workspace if workspace in ("dev", "test", "prod") else "dev"
+        intake_payload = {
+            "app_name":    app_name,
+            "apm_id":      app_id,
+            "requestor_name":  req_name,
+            "requestor_email": app_emails[0] if app_emails else f"{lan_id}@company.com",
+            "team":        app_team,
+            "environment": ws_env,
+            # Everything else preserved in form_data
+            "lan_id":             lan_id,
+            "first_name":         first_name,
+            "last_name":          last_name,
+            "region":             region,
+            "workspace":          workspace,
+            "data_type":          data_type,
+            "log_destinations":   log_dests,
+            "log_types":          log_types,
+            "entitlement_groups": groups,
+            "worker_group":       worker_grp,
+            "dest":               dest,
+            "ilm_tier":           ilm_tier,
+            "app_emails":         app_emails,
+        }
+        headers = {"Content-Type": "application/json"}
+        if ETN_ONBOARDING_TOKEN:
+            headers["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+
+        try:
+            resp = http_client.post(
+                f"{ETN_ONBOARDING_URL}/api/intake/",
+                json=intake_payload,
+                headers=headers,
+                timeout=15,
+            )
+            result = resp.json()
+            if resp.status_code >= 400:
+                log.error("etn_onboarding intake failed — %d: %s", resp.status_code, result)
+                err = result.get("error", str(result))
+                return jsonify({"errors": err if isinstance(err, list) else [err]}), resp.status_code
+
+            etn_request_id = result.get("id", result.get("apm_id"))
+            log.info("etn_onboarding intake OK — id=%s apm_id=%s", etn_request_id, app_id)
+        except Exception as exc:
+            log.error("etn_onboarding intake error — %s: %s", type(exc).__name__, exc)
+            return jsonify({"errors": [f"Onboarding service unavailable: {exc}"]}), 502
+
+        # Also index to ES so the catalog and admin pages stay populated
+        now = datetime.now(timezone.utc)
+        doc = {
+            "@timestamp":         now.isoformat(),
+            "request_id":         etn_request_id,
+            "lan_id":             lan_id,
+            "first_name":         first_name,
+            "last_name":          last_name,
+            "requester_name":     req_name,
+            "apmid":              app_id,
+            "appname":            app_name,
+            "app_team":           app_team,
+            "app_emails":         app_emails,
+            "region":             region,
+            "workspace":          workspace,
+            "data_type":          data_type,
+            "log_destinations":   log_dests,
+            "log_types":          log_types,
+            "entitlement_groups": groups,
+            "worker_group":       worker_grp,
+            "dest":               dest,
+            "ilm_tier":           ilm_tier,
+            "kibana_dashboard":   None,
+            "logstash_pipeline":  None,
+            "roles":              0,
+            "routes":             0,
+            "status":             "pending",
+        }
+        try:
+            es_id = es_index(doc, config)
+            log.info("ES index OK — request_id=%s  es_id=%s", etn_request_id, es_id)
+        except Exception as exc:
+            # Non-fatal: etn_onboarding is the source of truth, ES is for catalog
+            log.warning("ES index failed (non-fatal) — %s: %s", type(exc).__name__, exc)
+
+        # Also persist to local PostgreSQL if available (for legacy admin page)
+        # Truncate UUID to fit legacy VARCHAR(30) column
+        legacy_req_id = f"REQ-{now.strftime('%Y%m%d')}-{etn_request_id[:8].upper()}"
+        if _db_url:
+            try:
+                row = OnboardingRequest(
+                    request_id=legacy_req_id,
+                    timestamp=now,
+                    lan_id=lan_id,
+                    first_name=first_name,
+                    last_name=last_name,
+                    requester_name=req_name,
+                    apmid=app_id,
+                    appname=app_name,
+                    app_team=app_team,
+                    app_emails=app_emails,
+                    region=region,
+                    log_destinations=log_dests,
+                    log_types=log_types,
+                    entitlement_groups=groups,
+                    worker_group=worker_grp,
+                    dest=dest,
+                    ilm_tier=ilm_tier,
+                    status="pending",
+                )
+                db.session.add(row)
+                db.session.commit()
+                log.info("PSQL insert OK — request_id=%s", etn_request_id)
+            except Exception as exc:
+                db.session.rollback()
+                log.warning("PSQL insert failed (non-fatal) — %s: %s", type(exc).__name__, exc)
+
+        return jsonify({"request_id": etn_request_id})
+
+    # ── Fallback: direct insert (legacy mode when ETN_ONBOARDING_URL not set) ─
     now        = datetime.now(timezone.utc)
     request_id = f"REQ-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
 
@@ -864,8 +998,8 @@ def portal_admin_update_status():
 
     headers = {"Content-Type": "application/json"}
     token    = ds.get("token",    "").strip()
-    username = ds.get("username", "").strip()
-    password = ds.get("password", "").strip()
+    username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
+    password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
         headers["Authorization"] = f"ApiKey {token}"
 
@@ -1502,7 +1636,7 @@ def _make_es_session_for_catalog(ds: dict):
     Build a requests.Session for a datastream/entitlement ES config block.
     Returns (session, base_url, headers).
     """
-    base_url = ds.get("elk_url", "").strip().rstrip("/")
+    base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
     skip_ssl = ds.get("skip_ssl", False)
     if base_url and not base_url.startswith(("http://", "https://")):
         base_url = "https://" + base_url
@@ -1510,8 +1644,8 @@ def _make_es_session_for_catalog(ds: dict):
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     headers = {"Content-Type": "application/json"}
     token    = ds.get("token",    "").strip()
-    username = ds.get("username", "").strip()
-    password = ds.get("password", "").strip()
+    username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
+    password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
         headers["Authorization"] = f"ApiKey {token}"
     http_sess = http_client.Session()

@@ -1,17 +1,12 @@
-"""
-Synchronous ECE (Elastic Cloud Enterprise) client for the ETN Onboarding Flask app.
+"""HTTP client that delegates ECE operations to ``ece_service``.
 
-Adapted from the async ``ece_service`` client but uses the ``requests``
-library for synchronous Flask compatibility.
-
-All public methods are **stubs** that log the call and return a canned
-response.  Replace each stub body with a real HTTP call when the
-Elasticsearch / Kibana endpoints are confirmed.
+``etn_onboarding`` never talks to Elasticsearch directly.  This client calls
+the ``ece_service`` FastAPI microservice over HTTP.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import requests
 
@@ -24,73 +19,98 @@ _JSON_HEADERS = {
 
 
 class ECEClient:
-    """Synchronous REST client for Elasticsearch / Kibana security APIs."""
+    """Synchronous REST client that proxies to ``ece_service``."""
 
-    def __init__(self, es_url: str, auth_header: str) -> None:
-        """
-        Parameters
-        ----------
-        es_url:
-            Base URL of the Elasticsearch cluster
-            (e.g. ``https://es.example.com:9200``).
-        auth_header:
-            Value for the ``Authorization`` header — typically
-            ``Basic <base64>`` or ``ApiKey <token>``.
-        """
-        self.es_url = es_url.rstrip("/")
+    def __init__(self, base_url: str) -> None:
+        self.base_url = base_url.rstrip("/")
         self._session = requests.Session()
-        self._session.headers.update(
-            {**_JSON_HEADERS, "Authorization": auth_header}
+        self._session.headers.update(_JSON_HEADERS)
+
+    # ── HTTP helpers ─────────────────────────────────────────────────────
+
+    def _get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        resp = self._session.get(url, **kwargs)
+        resp.raise_for_status()
+        return resp.json() if resp.content else {}
+
+    def _put(self, path: str, json: Any = None, **kwargs: Any) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        resp = self._session.put(url, json=json, **kwargs)
+        resp.raise_for_status()
+        return resp.json() if resp.content else {}
+
+    def _delete(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        resp = self._session.delete(url, **kwargs)
+        resp.raise_for_status()
+        return resp.json() if resp.content else {}
+
+    # ── Roles ────────────────────────────────────────────────────────────
+
+    def create_role(
+        self,
+        name: str,
+        body: dict[str, Any],
+        target: str = "nonprod",
+    ) -> dict[str, Any]:
+        """Create or update an Elasticsearch role via ``ece_service``."""
+        logger.info("create_role: name=%s target=%s", name, target)
+        return self._put(
+            f"/api/v1/roles/{name}",
+            json=body,
+            params={"target": target},
         )
 
-    # ── Stub operations ──────────────────────────────────────────────────
-    # Each method below is a placeholder.  Replace the body with a real
-    # HTTP call when the endpoint contract is finalised.
+    def create_role_mapping(
+        self,
+        name: str,
+        body: dict[str, Any],
+        target: str = "nonprod",
+    ) -> dict[str, Any]:
+        """Create or update a role mapping via ``ece_service``."""
+        logger.info("create_role_mapping: name=%s target=%s", name, target)
+        return self._put(
+            f"/api/v1/role-mappings/{name}",
+            json=body,
+            params={"target": target},
+        )
 
-    def create_role(self, name: str, body: Dict[str, Any]) -> Dict[str, Any]:
-        """Create an Elasticsearch security role.
+    # ── Indexes ──────────────────────────────────────────────────────────
 
-        **Stub** — logs the request and returns a canned success response.
-        Replace with a PUT to ``/_security/role/{name}`` when ready.
+    def create_index(
+        self,
+        name: str,
+        body: dict[str, Any],
+        target: str = "nonprod",
+    ) -> dict[str, Any]:
+        """Create an index template via ``ece_service``."""
+        logger.info("create_index: name=%s target=%s", name, target)
+        return self._put(
+            f"/api/v1/indexes/{name}",
+            json=body,
+            params={"target": target},
+        )
 
-        Parameters
-        ----------
-        name:
-            Role name to create.
-        body:
-            Role definition (cluster privileges, index patterns, etc.).
-        """
-        logger.info("create_role called: name=%s body=%s", name, body)
-        return {"role": {"created": True, "name": name}}
+    # ── Provisioning ─────────────────────────────────────────────────────
 
-    def create_role_mapping(self, name: str, body: Dict[str, Any]) -> Dict[str, Any]:
-        """Create an Elasticsearch role mapping.
+    def provision_app(
+        self,
+        apm_id: str,
+        app_name: str,
+        environment: str,
+    ) -> dict[str, Any]:
+        """Provision roles and role-mappings for an app via ``ece_service``."""
+        logger.info("provision_app: apm_id=%s env=%s", apm_id, environment)
+        return self._put(
+            "/api/v1/roles/provision",
+            json={
+                "apps": [{"apmid": apm_id, "app_name": app_name}],
+                "environment": environment,
+            },
+        )
 
-        **Stub** — logs the request and returns a canned success response.
-        Replace with a PUT to ``/_security/role_mapping/{name}`` when ready.
+    # ── Health ───────────────────────────────────────────────────────────
 
-        Parameters
-        ----------
-        name:
-            Role-mapping name.
-        body:
-            Mapping definition (roles, rules, metadata).
-        """
-        logger.info("create_role_mapping called: name=%s body=%s", name, body)
-        return {"role_mapping": {"created": True, "name": name}}
-
-    def create_index(self, name: str, body: Dict[str, Any]) -> Dict[str, Any]:
-        """Create an Elasticsearch index.
-
-        **Stub** — logs the request and returns a canned success response.
-        Replace with a PUT to ``/{name}`` when ready.
-
-        Parameters
-        ----------
-        name:
-            Index name to create.
-        body:
-            Index settings and mappings.
-        """
-        logger.info("create_index called: name=%s body=%s", name, body)
-        return {"index": {"acknowledged": True, "index": name}}
+    def health(self) -> dict[str, Any]:
+        return self._get("/health")

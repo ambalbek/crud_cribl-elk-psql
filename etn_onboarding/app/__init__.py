@@ -4,6 +4,7 @@ import sys
 from flask import Flask
 from pythonjsonlogger import jsonlogger
 
+from app.auth import init_auth
 from app.extensions import db, migrate
 from app.routes import register_blueprints
 from app.services import init_services
@@ -80,6 +81,9 @@ def create_app(config_class=None) -> Flask:
 
     # Blueprints
     register_blueprints(flask_app)
+
+    # Auth
+    init_auth(flask_app)
 
     # Service clients
     init_services(flask_app)

@@ -18,6 +18,7 @@ class RequestStatus(str, enum.Enum):
     delivery_routing = "delivery_routing"
     delivery_storage = "delivery_storage"
     delivery_complete = "delivery_complete"
+    delivery_failed = "delivery_failed"
     validation = "validation"
     complete = "complete"
     cancelled = "cancelled"
@@ -37,11 +38,11 @@ class OnboardingRequest(db.Model):
     requestor_email = db.Column(String(320), nullable=False)
     team = db.Column(String(256), nullable=False)
     environment = db.Column(
-        Enum("dev", "stage", "prod", name="environment_enum", create_constraint=True),
+        Enum("dev", "stage", "prod", name="environment_enum", create_type=False),
         nullable=False,
     )
     status = db.Column(
-        Enum(RequestStatus, name="request_status_enum", create_constraint=True),
+        Enum(RequestStatus, name="request_status_enum", create_type=False),
         nullable=False,
         default=RequestStatus.intake_pending,
     )

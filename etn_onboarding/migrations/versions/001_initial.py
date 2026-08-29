@@ -15,15 +15,20 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
-    # --- Enum types ---
-    environment_enum = sa.Enum(
-        "dev", "stage", "prod",
-        name="environment_enum",
+def _create_enum_safe(name: str, *values: str) -> None:
+    """Create a PostgreSQL enum type, ignoring if it already exists."""
+    vals = ", ".join(f"'{v}'" for v in values)
+    op.execute(
+        f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({vals});"
+        f" EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
     )
-    environment_enum.create(op.get_bind(), checkfirst=True)
 
-    request_status_enum = sa.Enum(
+
+def upgrade() -> None:
+    # --- Enum types (idempotent) ---
+    _create_enum_safe("environment_enum", "dev", "stage", "prod")
+    _create_enum_safe(
+        "request_status_enum",
         "intake_pending",
         "intake_validated",
         "engagement",
@@ -35,21 +40,9 @@ def upgrade() -> None:
         "validation",
         "complete",
         "cancelled",
-        name="request_status_enum",
     )
-    request_status_enum.create(op.get_bind(), checkfirst=True)
-
-    job_type_enum = sa.Enum(
-        "cribl_edge", "etn_portal", "harness_blob",
-        name="job_type_enum",
-    )
-    job_type_enum.create(op.get_bind(), checkfirst=True)
-
-    job_status_enum = sa.Enum(
-        "pending", "running", "success", "failed",
-        name="job_status_enum",
-    )
-    job_status_enum.create(op.get_bind(), checkfirst=True)
+    _create_enum_safe("job_type_enum", "cribl_edge", "etn_portal", "harness_blob")
+    _create_enum_safe("job_status_enum", "pending", "running", "success", "failed")
 
     # --- onboarding_requests ---
     op.create_table(
@@ -62,12 +55,17 @@ def upgrade() -> None:
         sa.Column("team", sa.String(256), nullable=False),
         sa.Column(
             "environment",
-            environment_enum,
+            sa.Enum("dev", "stage", "prod", name="environment_enum", create_type=False),
             nullable=False,
         ),
         sa.Column(
             "status",
-            request_status_enum,
+            sa.Enum(
+                "intake_pending", "intake_validated", "engagement", "solutioning",
+                "delivery_collection", "delivery_routing", "delivery_storage",
+                "delivery_complete", "validation", "complete", "cancelled",
+                name="request_status_enum", create_type=False,
+            ),
             nullable=False,
             server_default="intake_pending",
         ),
@@ -99,7 +97,16 @@ def upgrade() -> None:
             nullable=False,
             index=True,
         ),
-        sa.Column("stage", request_status_enum, nullable=False),
+        sa.Column(
+            "stage",
+            sa.Enum(
+                "intake_pending", "intake_validated", "engagement", "solutioning",
+                "delivery_collection", "delivery_routing", "delivery_storage",
+                "delivery_complete", "validation", "complete", "cancelled",
+                name="request_status_enum", create_type=False,
+            ),
+            nullable=False,
+        ),
         sa.Column("action", sa.String(256), nullable=False),
         sa.Column("actor", sa.String(256), nullable=False),
         sa.Column("outcome", sa.String(256), nullable=False),
@@ -123,10 +130,14 @@ def upgrade() -> None:
             nullable=False,
             index=True,
         ),
-        sa.Column("job_type", job_type_enum, nullable=False),
+        sa.Column(
+            "job_type",
+            sa.Enum("cribl_edge", "etn_portal", "harness_blob", name="job_type_enum", create_type=False),
+            nullable=False,
+        ),
         sa.Column(
             "status",
-            job_status_enum,
+            sa.Enum("pending", "running", "success", "failed", name="job_status_enum", create_type=False),
             nullable=False,
             server_default="pending",
         ),

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: etn_onboarding
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff mypy
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy app/ --ignore-missing-imports --no-error-summary
+
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: etn_onboarding
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: etn_user
+          POSTGRES_PASSWORD: etn_pass
+          POSTGRES_DB: etn_onboarding_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U etn_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql://etn_user:etn_pass@localhost:5432/etn_onboarding_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest -v --tb=short
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+      - run: helm lint etn_onboarding/helm/etn-onboarding

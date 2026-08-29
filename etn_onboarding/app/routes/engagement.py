@@ -2,6 +2,7 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
+from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus, AuditLog
 from app.services.state_machine import transition_request, InvalidTransitionError
@@ -12,6 +13,7 @@ engagement_bp = Blueprint("engagement", __name__, url_prefix="/api/engagement")
 
 
 @engagement_bp.route("/<uuid:request_id>/schedule-meeting", methods=["POST"])
+@require_role("requester")
 def schedule_meeting(request_id):
     """Record an engagement meeting and transition the request to engagement.
 
@@ -69,6 +71,7 @@ def schedule_meeting(request_id):
 
 
 @engagement_bp.route("/<uuid:request_id>/change-request", methods=["POST"])
+@require_role("requester")
 def change_request(request_id):
     """Handle a change or review request.
 

@@ -24,18 +24,25 @@ ALLOWED_TRANSITIONS: dict[RequestStatus, list[RequestStatus]] = {
     ],
     RequestStatus.delivery_collection: [
         RequestStatus.delivery_routing,
+        RequestStatus.delivery_failed,
         RequestStatus.cancelled,
     ],
     RequestStatus.delivery_routing: [
         RequestStatus.delivery_storage,
+        RequestStatus.delivery_failed,
         RequestStatus.cancelled,
     ],
     RequestStatus.delivery_storage: [
         RequestStatus.delivery_complete,
+        RequestStatus.delivery_failed,
         RequestStatus.cancelled,
     ],
     RequestStatus.delivery_complete: [
         RequestStatus.validation,
+        RequestStatus.delivery_failed,
+        RequestStatus.cancelled,
+    ],
+    RequestStatus.delivery_failed: [
         RequestStatus.cancelled,
     ],
     RequestStatus.validation: [

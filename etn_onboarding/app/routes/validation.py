@@ -2,6 +2,7 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
+from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus, AuditLog
 from app.services.state_machine import transition_request, InvalidTransitionError
@@ -12,6 +13,7 @@ validation_bp = Blueprint("validation", __name__, url_prefix="/api/validation")
 
 
 @validation_bp.route("/<uuid:request_id>/turnover", methods=["POST"])
+@require_role("platform_admin")
 def record_turnover(request_id):
     """Record a turnover/dashboard handoff.
 
@@ -54,6 +56,7 @@ def record_turnover(request_id):
 
 
 @validation_bp.route("/<uuid:request_id>/complete", methods=["POST"])
+@require_role("platform_admin")
 def mark_complete(request_id):
     """Mark the onboarding as complete after customer demo/validation.
 

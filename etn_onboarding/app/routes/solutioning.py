@@ -2,6 +2,7 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
+from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus
 from app.services.state_machine import transition_request, InvalidTransitionError
@@ -12,6 +13,7 @@ solutioning_bp = Blueprint("solutioning", __name__, url_prefix="/api/solutioning
 
 
 @solutioning_bp.route("/<uuid:request_id>/advance", methods=["POST"])
+@require_role("approver")
 def advance_to_solutioning(request_id):
     """Transition the request into the solutioning stage.
 
@@ -45,6 +47,7 @@ def advance_to_solutioning(request_id):
 
 
 @solutioning_bp.route("/<uuid:request_id>/mapping", methods=["PUT"])
+@require_role("requester")
 def save_entity_mapping(request_id):
     """Save or update the entity/field mapping for an onboarding request.
 
@@ -71,6 +74,7 @@ def save_entity_mapping(request_id):
 
 
 @solutioning_bp.route("/<uuid:request_id>/workbook", methods=["PUT"])
+@require_role("requester")
 def save_workbook(request_id):
     """Save or update workbook data for an onboarding request.
 

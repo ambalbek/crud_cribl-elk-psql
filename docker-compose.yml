@@ -11,7 +11,7 @@ services:
       - es_data:/usr/share/elasticsearch/data
       - ./elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf -u elastic:MxrKcKT=0AedtIyI8O6y http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -80,13 +80,21 @@ services:
     environment:
       - LOG_LEVEL=INFO
       - LOG_FORMAT=${LOG_FORMAT:-text}
+      - DATABASE_URL=postgresql://etn_user:etn_pass@etn_postgres:5432/cribl_framework
+      - ES_DATASTREAM_URL=http://elasticsearch:9200
+      - ES_DATASTREAM_USERNAME=elastic
+      - ES_DATASTREAM_PASSWORD=MxrKcKT=0AedtIyI8O6y
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://apm-server:8200}
       - CRIBL_SERVICE_URL=http://cribl_service:8001
       - ECE_SERVICE_URL=http://ece_service:8002
+      - ETN_ONBOARDING_URL=http://etn_onboarding:5000
+      - ETN_ONBOARDING_TOKEN=${ETN_ONBOARDING_TOKEN:-framework-internal-token}
     depends_on:
       cribl_service:
         condition: service_healthy
       ece_service:
+        condition: service_healthy
+      etn_onboarding:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c",
@@ -95,6 +103,49 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  etn_onboarding:
+    build:
+      context: ./etn_onboarding
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5001:5000"
+    depends_on:
+      etn_postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://etn_user:etn_pass@etn_postgres:5432/etn_onboarding
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - AUTH_BACKEND=local
+      - AUTH_LOCAL_USERS=[{"username":"framework","token":"${ETN_ONBOARDING_TOKEN:-framework-internal-token}","roles":["platform_admin"]}]
+      - CRIBL_SERVICE_URL=http://cribl_service:8001
+      - ECE_SERVICE_URL=http://ece_service:8002
+      - ETN_PORTAL_URL=${ETN_PORTAL_URL:-}
+      - ETN_PORTAL_API_KEY=${ETN_PORTAL_API_KEY:-}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://apm-server:8200}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  etn_postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: etn_user
+      POSTGRES_PASSWORD: etn_pass
+      POSTGRES_DB: etn_onboarding
+    volumes:
+      - etn_pgdata:/var/lib/postgresql/data
+      - ./etn_onboarding/init-extra-dbs.sql:/docker-entrypoint-initdb.d/init-extra-dbs.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etn_user -d etn_onboarding"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   cribl_service:
     build:
@@ -169,3 +220,4 @@ services:
 volumes:
   es_data:
   cribl_edge_data:
+  etn_pgdata:

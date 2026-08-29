@@ -2,6 +2,7 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
+from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus
 from app.services.state_machine import transition_request, InvalidTransitionError
@@ -12,6 +13,7 @@ requests_bp = Blueprint("requests", __name__, url_prefix="/api/requests")
 
 
 @requests_bp.route("/<uuid:request_id>", methods=["GET"])
+@require_role("reader")
 def get_request(request_id):
     """Get a single onboarding request with its audit log and delivery jobs."""
     onboarding_req = db.session.get(OnboardingRequest, request_id)
@@ -64,6 +66,7 @@ def get_request(request_id):
 
 
 @requests_bp.route("/<uuid:request_id>/transition", methods=["POST"])
+@require_role("platform_admin")
 def generic_transition(request_id):
     """Generic state transition endpoint.
 

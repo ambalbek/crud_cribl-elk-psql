@@ -18,5 +18,6 @@
   "stagePath": "/tmp/cribl-staging",
   "destPath": "",
   "addIdToStagePath": true,
-  "removeEmptyDirs": false
+  "removeEmptyDirs": false,
+  "createContainer": false
 }

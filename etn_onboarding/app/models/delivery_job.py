@@ -28,7 +28,7 @@ class DeliveryJob(db.Model):
             "etn_portal",
             "harness_blob",
             name="job_type_enum",
-            create_constraint=True,
+            create_type=False,
         ),
         nullable=False,
     )
@@ -39,7 +39,7 @@ class DeliveryJob(db.Model):
             "success",
             "failed",
             name="job_status_enum",
-            create_constraint=True,
+            create_type=False,
         ),
         nullable=False,
         default="pending",
