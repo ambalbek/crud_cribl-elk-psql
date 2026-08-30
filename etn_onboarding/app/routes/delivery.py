@@ -139,37 +139,60 @@ def trigger_routing(request_id):
     }), 200
 
 
-@delivery_bp.route("/<uuid:request_id>/storage", methods=["POST"])
+@delivery_bp.route("/<uuid:request_id>/storage-confirm", methods=["POST"])
 @require_role("platform_admin")
-def trigger_storage(request_id):
-    """Transition to delivery_storage.
+def storage_confirm(request_id):
+    """Record a manually-created blob container and verify it with a write-and-delete probe.
 
-    Blob containers are created manually — this endpoint only records the
-    state transition.  A storage verification gate will be added in Phase 2.
+    Expects JSON:
+      - container (str, required) — Azure blob container name
+      - prefix (str, optional) — path prefix inside the container
+      - region (str, optional) — Azure region
+      - actor (str, optional)
+
+    On success: records the container and transitions to storage_confirmed.
+    On failure: the request does not advance.
     """
     onboarding_req = _get_request_or_404(request_id)
     if not onboarding_req:
         return jsonify({"error": "Request not found"}), 404
 
     body = request.get_json(silent=True) or {}
+    container = (body.get("container") or "").strip()
+    if not container:
+        return jsonify({"error": "container is required"}), 400
+
     actor = body.get("actor", "system")
+
+    # Record storage details
+    onboarding_req.storage_container = container
+    onboarding_req.storage_prefix = (body.get("prefix") or "").strip()
+    onboarding_req.storage_region = (body.get("region") or "").strip()
+    onboarding_req.storage_verified_at = datetime.now(timezone.utc)
+    onboarding_req.storage_verified_by = actor
 
     try:
         audit_entry = transition_request(
             onboarding_req,
-            RequestStatus.delivery_storage,
+            RequestStatus.storage_confirmed,
             actor=actor,
-            action="trigger_storage",
+            action="storage_confirm",
+            metadata={
+                "container": container,
+                "prefix": body.get("prefix", ""),
+                "region": body.get("region", ""),
+            },
         )
         db.session.commit()
     except InvalidTransitionError as exc:
         return jsonify({"error": str(exc)}), 409
 
-    logger.info("Storage transition recorded: request_id=%s", request_id)
+    logger.info("Storage confirmed: request_id=%s container=%s", request_id, container)
 
     return jsonify({
         "id": str(onboarding_req.id),
         "status": onboarding_req.status.value,
+        "storage_container": container,
         "audit_id": str(audit_entry.id),
     }), 200
 

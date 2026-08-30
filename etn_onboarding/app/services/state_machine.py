@@ -19,20 +19,36 @@ ALLOWED_TRANSITIONS: dict[RequestStatus, list[RequestStatus]] = {
         RequestStatus.cancelled,
     ],
     RequestStatus.solutioning: [
+        RequestStatus.storage_pending,
+        RequestStatus.cancelled,
+    ],
+    # ── Correct delivery order: storage first, then build on it ──
+    RequestStatus.storage_pending: [
+        RequestStatus.storage_confirmed,
+        RequestStatus.delivery_failed,
+        RequestStatus.cancelled,
+    ],
+    RequestStatus.storage_confirmed: [
+        RequestStatus.delivery_destination,
+        RequestStatus.delivery_failed,
+        RequestStatus.cancelled,
+    ],
+    RequestStatus.delivery_destination: [
+        RequestStatus.delivery_pack,
+        RequestStatus.delivery_failed,
+        RequestStatus.cancelled,
+    ],
+    RequestStatus.delivery_pack: [
+        RequestStatus.delivery_route,
+        RequestStatus.delivery_failed,
+        RequestStatus.cancelled,
+    ],
+    RequestStatus.delivery_route: [
         RequestStatus.delivery_collection,
+        RequestStatus.delivery_failed,
         RequestStatus.cancelled,
     ],
     RequestStatus.delivery_collection: [
-        RequestStatus.delivery_routing,
-        RequestStatus.delivery_failed,
-        RequestStatus.cancelled,
-    ],
-    RequestStatus.delivery_routing: [
-        RequestStatus.delivery_storage,
-        RequestStatus.delivery_failed,
-        RequestStatus.cancelled,
-    ],
-    RequestStatus.delivery_storage: [
         RequestStatus.delivery_complete,
         RequestStatus.delivery_failed,
         RequestStatus.cancelled,

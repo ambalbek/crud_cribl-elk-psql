@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify
 from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus, AuditLog
+from app.services.pack_resolver import resolve_pack
 from app.services.state_machine import transition_request, InvalidTransitionError
 
 logger = logging.getLogger(__name__)
@@ -41,9 +42,17 @@ def submit_request():
     if existing:
         return jsonify({"error": f"An onboarding request with apm_id '{body['apm_id']}' already exists"}), 409
 
-    # Separate core columns from extra form data
-    core_keys = {"app_name", "apm_id", "requestor_name", "requestor_email", "team", "environment"}
-    form_data = {k: v for k, v in body.items() if k not in core_keys}
+    # All known columns
+    known_keys = {
+        "app_name", "apm_id", "requestor_name", "requestor_email", "team",
+        "environment", "lan_id", "first_name", "last_name", "app_emails",
+        "workspace", "worker_group", "region", "data_type",
+        "log_destinations", "log_types", "ilm_tier", "entitlement_groups",
+    }
+    form_data = {k: v for k, v in body.items() if k not in known_keys}
+
+    # Resolve pack from registry and pin at intake time
+    pack_ref = resolve_pack(body.get("data_type"))
 
     onboarding_req = OnboardingRequest(
         app_name=body["app_name"],
@@ -52,8 +61,22 @@ def submit_request():
         requestor_email=body["requestor_email"],
         team=body["team"],
         environment=environment,
+        lan_id=body.get("lan_id"),
+        first_name=body.get("first_name"),
+        last_name=body.get("last_name"),
+        app_emails=body.get("app_emails", []),
+        workspace=body.get("workspace"),
+        worker_group=body.get("worker_group"),
+        region=body.get("region"),
+        data_type=body.get("data_type"),
+        log_destinations=body.get("log_destinations", []),
+        log_types=body.get("log_types", []),
+        ilm_tier=body.get("ilm_tier", "none"),
+        entitlement_groups=body.get("entitlement_groups", []),
+        pack_id=pack_ref.pack_id,
+        pack_version=pack_ref.pack_version,
         status=RequestStatus.intake_pending,
-        form_data=form_data,
+        form_data=form_data if form_data else {},
     )
     db.session.add(onboarding_req)
     db.session.flush()
@@ -122,10 +145,24 @@ def list_requests():
             "id": str(r.id),
             "app_name": r.app_name,
             "apm_id": r.apm_id,
+            "lan_id": r.lan_id,
+            "first_name": r.first_name,
+            "last_name": r.last_name,
             "requestor_name": r.requestor_name,
             "requestor_email": r.requestor_email,
             "team": r.team,
+            "app_emails": r.app_emails,
             "environment": r.environment,
+            "workspace": r.workspace,
+            "worker_group": r.worker_group,
+            "region": r.region,
+            "data_type": r.data_type,
+            "log_destinations": r.log_destinations,
+            "log_types": r.log_types,
+            "ilm_tier": r.ilm_tier,
+            "entitlement_groups": r.entitlement_groups,
+            "pack_id": r.pack_id,
+            "pack_version": r.pack_version,
             "status": r.status.value,
             "created_at": r.created_at.isoformat(),
             "updated_at": r.updated_at.isoformat(),

@@ -7,6 +7,7 @@ from app.routes.solutioning import solutioning_bp
 from app.routes.delivery import delivery_bp
 from app.routes.validation import validation_bp
 from app.routes.requests import requests_bp
+from app.routes.packs import packs_bp
 
 
 def register_blueprints(flask_app: Flask) -> None:
@@ -18,3 +19,4 @@ def register_blueprints(flask_app: Flask) -> None:
     flask_app.register_blueprint(delivery_bp)
     flask_app.register_blueprint(validation_bp)
     flask_app.register_blueprint(requests_bp)
+    flask_app.register_blueprint(packs_bp)
