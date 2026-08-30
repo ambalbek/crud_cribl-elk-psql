@@ -246,6 +246,25 @@
         </div>
       </div>
 
+      <!-- Pack -->
+      <div class="panel">
+        <p class="panel-title">Cribl Pack</p>
+        <div class="form-group">
+          <label for="t1_pack">Pack <span style="font-weight:400">(attaches to the route pipeline)</span></label>
+          <select id="t1_pack">
+            <option value="">— none (use route template pipeline) —</option>
+            <option value="passthru">passthru</option>
+            <option value="mulesoft_pack">mulesoft_pack</option>
+            <option value="forgerock_pack">forgerock_pack</option>
+            <option value="springboot_pack">springboot_pack</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="t1_pack_version">Pack Version</label>
+          <input type="text" id="t1_pack_version" placeholder="e.g. 1.0.0 — leave blank for latest">
+        </div>
+      </div>
+
       <!-- Options -->
       <div class="panel">
         <p class="panel-title">Options</p>
@@ -464,6 +483,25 @@
             <label for="t2_elk_password_prod">Prod Password</label>
             <input type="password" id="t2_elk_password_prod">
           </div>
+        </div>
+      </div>
+
+      <!-- Cribl Pack -->
+      <div class="panel">
+        <p class="panel-title">Cribl Pack</p>
+        <div class="form-group">
+          <label for="t2_pack">Pack <span style="font-weight:400">(attaches to the route pipeline)</span></label>
+          <select id="t2_pack">
+            <option value="">— none (use route template pipeline) —</option>
+            <option value="passthru">passthru</option>
+            <option value="mulesoft_pack">mulesoft_pack</option>
+            <option value="forgerock_pack">forgerock_pack</option>
+            <option value="springboot_pack">springboot_pack</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="t2_pack_version">Pack Version</label>
+          <input type="text" id="t2_pack_version" placeholder="e.g. 1.0.0 — leave blank for latest">
         </div>
       </div>
 
@@ -742,7 +780,9 @@ async function submitPusher() {
   fd.append('group_id', document.getElementById('t1_group_id').value);
   if (document.getElementById('t1_create_missing_group').checked)
     fd.append('create_missing_group', '1');
-  fd.append('group_name',   document.getElementById('t1_group_name').value);
+  fd.append('group_name',    document.getElementById('t1_group_name').value);
+  fd.append('pack',          document.getElementById('t1_pack').value);
+  fd.append('pack_version',  document.getElementById('t1_pack_version').value);
   fd.append('min_routes',   document.getElementById('t1_min_routes').value);
   fd.append('diff_lines',   document.getElementById('t1_diff_lines').value);
   fd.append('snapshot_dir', document.getElementById('t1_snapshot_dir').value);
@@ -819,11 +859,13 @@ async function submitRodeRm() {
   fd.append('cribl_token',          document.getElementById('t2_cribl_token').value);
   fd.append('cribl_username',       document.getElementById('t2_cribl_username').value);
   fd.append('cribl_password',       document.getElementById('t2_cribl_password').value);
-  fd.append('workspace',    document.getElementById('t2_workspace').value);
-  fd.append('worker_group', document.getElementById('t2_worker_group').value);
-  fd.append('region',       document.querySelector('input[name="t2_region"]:checked').value);
-  fd.append('log_level',    document.getElementById('t2_log_level').value);
-  fd.append('order',        document.querySelector('input[name="t2_order"]:checked').value);
+  fd.append('workspace',     document.getElementById('t2_workspace').value);
+  fd.append('worker_group',  document.getElementById('t2_worker_group').value);
+  fd.append('region',        document.querySelector('input[name="t2_region"]:checked').value);
+  fd.append('pack',          document.getElementById('t2_pack').value);
+  fd.append('pack_version',  document.getElementById('t2_pack_version').value);
+  fd.append('log_level',     document.getElementById('t2_log_level').value);
+  fd.append('order',         document.querySelector('input[name="t2_order"]:checked').value);
 
   if (document.getElementById('t2_allow_prod').checked)  fd.append('allow_prod',  '1');
   if (document.getElementById('t2_skip_elk').checked)    fd.append('skip_elk',    '1');

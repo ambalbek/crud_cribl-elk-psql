@@ -426,6 +426,23 @@ class CriblClient:
     def update_git_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._patch("/api/v1/system/settings/git-settings", payload)
 
+    # ── Packs ──────────────────────────────────────────────────────────────
+
+    def list_packs(self, worker_group: str) -> list[dict]:
+        return self._get(f"/api/v1/m/{worker_group}/packs")
+
+    def get_pack(self, worker_group: str, pack_id: str) -> dict[str, Any]:
+        return self._get(f"/api/v1/m/{worker_group}/packs/{pack_id}")
+
+    def install_pack(self, worker_group: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._post(f"/api/v1/m/{worker_group}/packs", payload)
+
+    def upgrade_pack(self, worker_group: str, pack_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._patch(f"/api/v1/m/{worker_group}/packs/{pack_id}", payload)
+
+    def remove_pack(self, worker_group: str, pack_id: str) -> dict[str, Any]:
+        return self._delete(f"/api/v1/m/{worker_group}/packs/{pack_id}")
+
 
 def get_cribl_client() -> CriblClient:
     """FastAPI dependency — new authenticated client per request."""

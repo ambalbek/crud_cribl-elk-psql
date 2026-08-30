@@ -62,6 +62,10 @@ ALLOWED_TRANSITIONS: dict[RequestStatus, list[RequestStatus]] = {
         RequestStatus.cancelled,
     ],
     RequestStatus.validation: [
+        RequestStatus.reverify,
+        RequestStatus.cancelled,
+    ],
+    RequestStatus.reverify: [
         RequestStatus.complete,
         RequestStatus.cancelled,
     ],

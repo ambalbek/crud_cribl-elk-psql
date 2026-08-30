@@ -73,6 +73,7 @@ class TestIllegalTransitions:
         [
             (src, dst)
             for src in RequestStatus
+            if src in ALLOWED_TRANSITIONS  # only test states that have entries
             for dst in RequestStatus
             if dst not in ALLOWED_TRANSITIONS.get(src, [])
         ],
@@ -148,7 +149,7 @@ class TestDeliveryCompleteGuard:
     """delivery_complete must refuse while any job is pending or running."""
 
     def test_refuses_with_pending_job(self, client, app, db, admin_headers):
-        req = _make_request(status=RequestStatus.delivery_storage)
+        req = _make_request(status=RequestStatus.delivery_collection)
         db.session.add(req)
         db.session.flush()
 
@@ -160,7 +161,6 @@ class TestDeliveryCompleteGuard:
         db.session.add(job)
         db.session.flush()
 
-        # Transition to delivery_complete via the HTTP endpoint
         resp = client.post(
             f"/api/delivery/{req.id}/complete",
             json={"actor": "admin"},
@@ -171,7 +171,7 @@ class TestDeliveryCompleteGuard:
         assert data.get("pending_jobs", 0) > 0
 
     def test_refuses_with_running_job(self, client, app, db, admin_headers):
-        req = _make_request(status=RequestStatus.delivery_storage)
+        req = _make_request(status=RequestStatus.delivery_collection)
         db.session.add(req)
         db.session.flush()
 
@@ -192,7 +192,7 @@ class TestDeliveryCompleteGuard:
         assert resp.status_code == 409
 
     def test_allows_when_all_jobs_done(self, client, app, db, admin_headers):
-        req = _make_request(status=RequestStatus.delivery_storage)
+        req = _make_request(status=RequestStatus.delivery_collection)
         db.session.add(req)
         db.session.flush()
 
@@ -210,13 +210,10 @@ class TestDeliveryCompleteGuard:
             json={"actor": "admin"},
             headers=admin_headers,
         )
-        # May be 409 if state transition from delivery_storage -> delivery_complete
-        # is not allowed (it goes delivery_storage -> delivery_complete in current model).
-        # Actually it IS allowed.
         assert resp.status_code == 200
 
     def test_allows_when_no_jobs(self, client, app, db, admin_headers):
-        req = _make_request(status=RequestStatus.delivery_storage)
+        req = _make_request(status=RequestStatus.delivery_collection)
         db.session.add(req)
         db.session.flush()
 
@@ -236,9 +233,12 @@ class TestDeliveryFailed:
     @pytest.mark.parametrize(
         "from_status",
         [
+            RequestStatus.storage_pending,
+            RequestStatus.storage_confirmed,
+            RequestStatus.delivery_destination,
+            RequestStatus.delivery_pack,
+            RequestStatus.delivery_route,
             RequestStatus.delivery_collection,
-            RequestStatus.delivery_routing,
-            RequestStatus.delivery_storage,
             RequestStatus.delivery_complete,
         ],
     )

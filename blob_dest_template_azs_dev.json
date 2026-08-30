@@ -7,7 +7,7 @@
   "storageAccountName": "devstorageazs",
   "authenticationMethod": "connectionString",
   "connectionString": "DefaultEndpointsProtocol=https;AccountName=devstorageazs;AccountKey=REPLACE_ME;EndpointSuffix=core.windows.net",
-  "partitionExpr": "`${host}/${sourcetype}`",
+  "partitionExpr": "",
   "format": "raw",
   "compress": "gzip",
   "maxFileSizeMB": 32,

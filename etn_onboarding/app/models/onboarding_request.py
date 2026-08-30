@@ -27,6 +27,7 @@ class RequestStatus(str, enum.Enum):
     delivery_complete = "delivery_complete"
     delivery_failed = "delivery_failed"
     validation = "validation"
+    reverify = "reverify"
     complete = "complete"
     cancelled = "cancelled"
 

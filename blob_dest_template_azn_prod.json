@@ -7,7 +7,7 @@
   "storageAccountName": "prodstorageazn",
   "authenticationMethod": "connectionString",
   "connectionString": "DefaultEndpointsProtocol=https;AccountName=prodstorageazn;AccountKey=REPLACE_ME;EndpointSuffix=core.windows.net",
-  "partitionExpr": "`${host}/${sourcetype}`",
+  "partitionExpr": "",
   "format": "raw",
   "compress": "gzip",
   "maxFileSizeMB": 32,

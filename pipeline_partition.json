@@ -1,0 +1,21 @@
+{
+  "id": "log_type_partition",
+  "conf": {
+    "asyncFuncTimeout": 10000,
+    "functions": [
+      {
+        "id": "eval",
+        "filter": "true",
+        "disabled": false,
+        "conf": {
+          "add": [
+            {
+              "name": "__partition",
+              "value": "`${apmid}/${__logType || 'UNCLASSIFIED'}/${C.Time.strftime(_time,'%Y/%m/%d')}`"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

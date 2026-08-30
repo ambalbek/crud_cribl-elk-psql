@@ -44,11 +44,34 @@ class TestConfig:
     ETN_PORTAL_API_KEY = "test-key"
 
 
+def _create_enums(db_session) -> None:
+    """Create PostgreSQL enum types before db.create_all (models use create_type=False)."""
+    from sqlalchemy import text
+    enums = [
+        "DO $$ BEGIN CREATE TYPE environment_enum AS ENUM ('dev','stage','prod'); EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+        (
+            "DO $$ BEGIN CREATE TYPE request_status_enum AS ENUM ("
+            "'intake_pending','intake_validated','engagement','solutioning',"
+            "'storage_pending','storage_confirmed',"
+            "'delivery_destination','delivery_pack','delivery_route',"
+            "'delivery_collection','delivery_routing','delivery_storage',"
+            "'delivery_complete','delivery_failed','validation','reverify','complete','cancelled'"
+            "); EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+        ),
+        "DO $$ BEGIN CREATE TYPE job_type_enum AS ENUM ('cribl_edge','etn_portal','harness_blob'); EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+        "DO $$ BEGIN CREATE TYPE job_status_enum AS ENUM ('pending','running','success','failed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+    ]
+    for stmt in enums:
+        db_session.execute(text(stmt))
+    db_session.commit()
+
+
 @pytest.fixture(scope="session")
 def app() -> Flask:
     """Create the Flask application with a test database."""
     flask_app = create_app(config_class=TestConfig)
     with flask_app.app_context():
+        _create_enums(_db.session)
         _db.create_all()
     yield flask_app
     with flask_app.app_context():
@@ -57,22 +80,12 @@ def app() -> Flask:
 
 @pytest.fixture()
 def db(app: Flask):
-    """Provide a clean database for each test via transaction rollback."""
+    """Provide a clean database for each test via nested transaction rollback."""
     with app.app_context():
-        connection = _db.engine.connect()
-        transaction = connection.begin()
-
-        options = {"bind": connection}
-        session = _db.create_scoped_session(options=options)
-        old_session = _db.session
-        _db.session = session
-
+        _db.session.begin_nested()
         yield _db
-
-        transaction.rollback()
-        connection.close()
-        session.remove()
-        _db.session = old_session
+        _db.session.rollback()
+        _db.session.remove()
 
 
 @pytest.fixture()

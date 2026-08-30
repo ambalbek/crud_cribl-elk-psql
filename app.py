@@ -1340,6 +1340,9 @@ def run_pusher():
         last_rc      = 0
         results      = []
 
+        pack_id      = (form.get("pack") or "").strip()
+        pack_version = (form.get("pack_version") or "").strip()
+
         for wg in worker_groups:
             payload = {
                 "apps":             apps_payload,
@@ -1350,6 +1353,12 @@ def run_pusher():
                 "dry_run":          dry_run,
                 "fallback_pipeline": fallback_pipe,
             }
+            if pack_id:
+                payload["pack"] = {
+                    "pack_id": pack_id,
+                    "pack_version": pack_version or "latest",
+                    "source": "registry",
+                }
             try:
                 body, status = _svc_post(
                     CRIBL_SERVICE_URL,
@@ -1556,6 +1565,14 @@ def run_role_rm():
                 "routes_table": routes_table, "dry_run": dry_run,
                 "fallback_pipeline": fallback_pipe,
             }
+            t2_pack_id      = (form.get("pack") or "").strip()
+            t2_pack_version = (form.get("pack_version") or "").strip()
+            if t2_pack_id:
+                cribl_payload["pack"] = {
+                    "pack_id": t2_pack_id,
+                    "pack_version": t2_pack_version or "latest",
+                    "source": "registry",
+                }
             try:
                 cbody, cstatus = _svc_post(CRIBL_SERVICE_URL, f"/api/v1/m/{wg}/provision", json=cribl_payload)
             except Exception as exc:

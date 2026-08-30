@@ -134,6 +134,8 @@ services:
   etn_postgres:
     image: postgres:16
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: etn_user
       POSTGRES_PASSWORD: etn_pass

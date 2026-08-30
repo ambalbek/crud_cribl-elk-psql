@@ -24,7 +24,7 @@ configure_otel("cribl-service")
 
 from fastapi import FastAPI
 
-from .routers import destinations, edge, leaders, pipelines, provision, routes, stream, worker_groups, workgroups
+from .routers import destinations, edge, leaders, packs, pipelines, provision, routes, stream, worker_groups, workgroups
 from .settings import LOG_LEVEL
 
 _handler = logging.StreamHandler(sys.stdout)
@@ -57,6 +57,7 @@ app.include_router(routes.router,        tags=["routes"])
 app.include_router(provision.router,     tags=["provision"])
 app.include_router(destinations.router,  tags=["destinations"])
 app.include_router(pipelines.router,     tags=["pipelines"])
+app.include_router(packs.router,         tags=["packs"])
 app.include_router(worker_groups.router, tags=["worker-groups"])
 app.include_router(leaders.router,       tags=["leaders"])
 app.include_router(stream.router,        tags=["stream"])
