@@ -22,7 +22,8 @@ from otel_setup import configure_otel, make_json_formatter, use_json_logging
 
 configure_otel("cribl-service")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from .routers import destinations, edge, leaders, packs, pipelines, provision, routes, stream, worker_groups, workgroups
 from .settings import LOG_LEVEL
@@ -68,3 +69,20 @@ app.include_router(workgroups.router,    tags=["workgroups"])
 @app.get("/health", tags=["health"])
 def health() -> dict:
     return {"status": "ok", "service": "cribl_service"}
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail or "Unknown error"},
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logging.getLogger("cribl-service").error("Unhandled: %s", exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+    )

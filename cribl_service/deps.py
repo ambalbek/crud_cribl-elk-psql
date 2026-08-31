@@ -110,7 +110,12 @@ class CriblClient:
     def _raise(self, r: requests.Response) -> dict[str, Any]:
         if r.status_code >= 400:
             raise HTTPException(status_code=r.status_code, detail=r.text[:400])
-        return r.json() if r.content else {}
+        if not r.content:
+            return {}
+        try:
+            return r.json()
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=502, detail=f"Invalid JSON from Cribl API: {r.text[:200]}")
 
     def _get(self, path: str) -> dict[str, Any]:
         try:

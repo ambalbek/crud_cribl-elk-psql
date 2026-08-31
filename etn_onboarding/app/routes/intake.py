@@ -1,6 +1,7 @@
 import logging
 
 from flask import Blueprint, request, jsonify
+from sqlalchemy.exc import IntegrityError
 
 from app.auth import require_role
 from app.extensions import db
@@ -32,6 +33,11 @@ def submit_request():
     missing = REQUIRED_FIELDS - set(body.keys())
     if missing:
         return jsonify({"error": f"Missing required fields: {sorted(missing)}"}), 400
+
+    for field in ("app_emails", "log_destinations", "log_types", "entitlement_groups"):
+        val = body.get(field)
+        if val is not None and not isinstance(val, list):
+            return jsonify({"error": f"{field} must be a list"}), 400
 
     environment = body["environment"]
     if environment not in VALID_ENVIRONMENTS:
@@ -90,7 +96,11 @@ def submit_request():
         metadata_={"source": "intake_form"},
     )
     db.session.add(audit_entry)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": f"An onboarding request with apm_id '{body['apm_id']}' already exists"}), 409
 
     logger.info("Onboarding request created: apm_id=%s id=%s", body["apm_id"], onboarding_req.id)
 

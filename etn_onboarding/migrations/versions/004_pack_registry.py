@@ -36,7 +36,7 @@ def upgrade() -> None:
             (gen_random_uuid(), 'other',      'passthru',       '1.0.0', 'route', 'approved', 'Fallback — unknown data types pass through unmodified'),
             (gen_random_uuid(), 'mulesoft',   'mulesoft_pack',  '1.0.0', 'route', 'approved', 'Mulesoft log processing pack'),
             (gen_random_uuid(), 'forgerock',  'forgerock_pack', '1.0.0', 'route', 'approved', 'ForgeRock log processing pack'),
-            (gen_random_uuid(), 'springboot', 'springboot_pack','1.0.0', 'route', 'approved', 'Spring Boot log processing pack')
+            (gen_random_uuid(), 'dynatrace', 'dynatrace_pack','1.0.0', 'route', 'approved', 'Spring Boot log processing pack')
         ON CONFLICT (data_type) DO NOTHING;
     """)
 

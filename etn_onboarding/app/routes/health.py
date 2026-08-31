@@ -16,16 +16,6 @@ def index():
     return jsonify({
         "service": "ETN Onboarding",
         "version": "1.0.0",
-        "endpoints": {
-            "health": "/health",
-            "ready": "/ready",
-            "intake": "/api/intake",
-            "engagement": "/api/engagement",
-            "solutioning": "/api/solutioning",
-            "delivery": "/api/delivery",
-            "validation": "/api/validation",
-            "requests": "/api/requests",
-        },
     }), 200
 
 

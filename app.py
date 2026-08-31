@@ -492,7 +492,7 @@ def _svc_post(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
     resp = http_client.post(url, timeout=120, **kwargs)
     try:
         body = resp.json()
-    except Exception:
+    except (ValueError, TypeError):
         body = {"raw": resp.text}
     return body, resp.status_code
 
@@ -802,16 +802,23 @@ def portal_submit():
                 headers=headers,
                 timeout=15,
             )
-            result = resp.json()
             if resp.status_code >= 400:
-                log.error("etn_onboarding intake failed — %d: %s", resp.status_code, result)
-                err = result.get("error", str(result))
+                try:
+                    result = resp.json()
+                    err = result.get("error", str(result))
+                except (ValueError, TypeError):
+                    err = resp.text[:400]
+                log.error("etn_onboarding intake failed — %d: %s", resp.status_code, err)
                 return jsonify({"errors": err if isinstance(err, list) else [err]}), resp.status_code
 
-            etn_request_id = result.get("id", result.get("apm_id"))
+            result = resp.json()
+            etn_request_id = result.get("id") or result.get("apm_id")
+            if not etn_request_id:
+                log.error("etn_onboarding response missing id: %s", result)
+                return jsonify({"errors": ["Onboarding service returned invalid response"]}), 502
             log.info("etn_onboarding intake OK — id=%s apm_id=%s", etn_request_id, app_id)
-        except Exception as exc:
-            log.error("etn_onboarding intake error — %s: %s", type(exc).__name__, exc)
+        except requests.RequestException as exc:
+            log.error("etn_onboarding intake error — %s", exc.__class__.__name__)
             return jsonify({"errors": [f"Onboarding service unavailable: {exc}"]}), 502
 
         # Also index to ES so the catalog and admin pages stay populated

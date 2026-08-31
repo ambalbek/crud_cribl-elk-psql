@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
+import requests
 from flask import Blueprint, request, jsonify
 
 from app.auth import require_role
@@ -56,12 +57,12 @@ def trigger_collection(request_id):
         result = services.cribl.configure_edge_agent(
             app_name=onboarding_req.app_name,
             apm_id=onboarding_req.apm_id,
-            config={"environment": onboarding_req.environment, "entity_mapping": onboarding_req.entity_mapping},
+            config={"environment": onboarding_req.environment, "entity_mapping": onboarding_req.entity_mapping or {}},
         )
         job.status = "success"
         job.result = result
         job.completed_at = datetime.now(timezone.utc)
-    except Exception as exc:
+    except (requests.RequestException, ConnectionError) as exc:
         logger.exception("Cribl Edge config failed: request_id=%s", request_id)
         job.status = "failed"
         job.result = {"error": str(exc)}
@@ -115,12 +116,12 @@ def trigger_routing(request_id):
             apm_id=onboarding_req.apm_id,
             app_name=onboarding_req.app_name,
             environment=onboarding_req.environment,
-            config={"entity_mapping": onboarding_req.entity_mapping},
+            config={"entity_mapping": onboarding_req.entity_mapping or {}},
         )
         job.status = "success"
         job.result = result
         job.completed_at = datetime.now(timezone.utc)
-    except Exception as exc:
+    except (requests.RequestException, ConnectionError) as exc:
         logger.exception("ETN Portal routing failed: request_id=%s", request_id)
         job.status = "failed"
         job.result = {"error": str(exc)}

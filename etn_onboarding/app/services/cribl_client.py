@@ -9,6 +9,8 @@ import logging
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -25,30 +27,33 @@ class CriblClient:
         self.base_url = base_url.rstrip("/")
         self._session = requests.Session()
         self._session.headers.update(_JSON_HEADERS)
+        retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
+        self._session.mount("http://", HTTPAdapter(max_retries=retry))
+        self._session.mount("https://", HTTPAdapter(max_retries=retry))
 
     # ── HTTP helpers ─────────────────────────────────────────────────────
 
     def _get(self, path: str, **kwargs: Any) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
-        resp = self._session.get(url, **kwargs)
+        resp = self._session.get(url, timeout=30, **kwargs)
         resp.raise_for_status()
         return resp.json() if resp.content else {}
 
     def _post(self, path: str, json: Any = None, **kwargs: Any) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
-        resp = self._session.post(url, json=json, **kwargs)
+        resp = self._session.post(url, json=json, timeout=30, **kwargs)
         resp.raise_for_status()
         return resp.json() if resp.content else {}
 
     def _patch(self, path: str, json: Any = None, **kwargs: Any) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
-        resp = self._session.patch(url, json=json, **kwargs)
+        resp = self._session.patch(url, json=json, timeout=30, **kwargs)
         resp.raise_for_status()
         return resp.json() if resp.content else {}
 
     def _delete(self, path: str, **kwargs: Any) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
-        resp = self._session.delete(url, **kwargs)
+        resp = self._session.delete(url, timeout=30, **kwargs)
         resp.raise_for_status()
         return resp.json() if resp.content else {}
 

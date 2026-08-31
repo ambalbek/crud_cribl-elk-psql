@@ -111,6 +111,8 @@ def generic_transition(request_id):
     actor = body.get("actor", "system")
     action = body.get("action")
     metadata = body.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        return jsonify({"error": "metadata must be a dict"}), 400
 
     try:
         audit_entry = transition_request(
