@@ -62,6 +62,22 @@ ECE_SERVICE_URL        = os.environ.get("ECE_SERVICE_URL",   "").rstrip("/")
 ETN_ONBOARDING_URL     = os.environ.get("ETN_ONBOARDING_URL", "").rstrip("/")
 ETN_ONBOARDING_TOKEN   = os.environ.get("ETN_ONBOARDING_TOKEN", "")
 
+# LDAP lookup — for portal lanId autocomplete
+# Reads from config.json "ldap" block, env vars override.
+def _ldap_cfg():
+    """Return resolved LDAP settings (config.json + env var override)."""
+    try:
+        cfg = load_config().get("ldap", {})
+    except Exception:
+        cfg = {}
+    return {
+        "server":   os.environ.get("LDAP_SERVER",   cfg.get("server", "")),
+        "bind_dn":  os.environ.get("LDAP_BIND_DN",  cfg.get("bind_dn", "")),
+        "bind_pw":  os.environ.get("LDAP_BIND_PW",  cfg.get("bind_pw", "")),
+        "base_dn":  os.environ.get("LDAP_BASE_DN",  cfg.get("base_dn", "")),
+        "use_ssl":  os.environ.get("LDAP_USE_SSL",  str(cfg.get("use_ssl", True))).lower() in ("1", "true", "yes"),
+    }
+
 
 # ── Logging setup ──────────────────────────────────────────────────────────────
 
@@ -481,6 +497,22 @@ def fetch_role_mappings(cluster):
 
 # ── Microservice HTTP helpers ─────────────────────────────────────────────────
 
+def _svc_get(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
+    """
+    GET from an internal microservice.  Returns (json_body, status_code).
+    Raises RuntimeError if the service URL is not configured.
+    """
+    if not base_url:
+        raise RuntimeError("Service URL is not configured")
+    url = base_url + path
+    resp = http_client.get(url, timeout=120, **kwargs)
+    try:
+        body = resp.json()
+    except (ValueError, TypeError):
+        body = {"raw": resp.text}
+    return body, resp.status_code
+
+
 def _svc_post(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
     """
     POST to an internal microservice.  Returns (json_body, status_code).
@@ -490,6 +522,22 @@ def _svc_post(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
         raise RuntimeError("Service URL is not configured")
     url = base_url + path
     resp = http_client.post(url, timeout=120, **kwargs)
+    try:
+        body = resp.json()
+    except (ValueError, TypeError):
+        body = {"raw": resp.text}
+    return body, resp.status_code
+
+
+def _svc_patch(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
+    """
+    PATCH to an internal microservice.  Returns (json_body, status_code).
+    Raises RuntimeError if the service URL is not configured.
+    """
+    if not base_url:
+        raise RuntimeError("Service URL is not configured")
+    url = base_url + path
+    resp = http_client.patch(url, timeout=120, **kwargs)
     try:
         body = resp.json()
     except (ValueError, TypeError):
@@ -636,34 +684,51 @@ def login_page():
 
 @app.route("/cribl/login", methods=["POST"])
 def login_submit():
-    """Handle local fallback login (username/password from config)."""
+    """Handle local fallback login.
+
+    Regular users only need a username (no password).
+    Admin users require both username and password.
+    """
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
     next_url = request.form.get("next") or request.args.get("next") or "/"
 
-    if not username or not password:
+    if not username:
         return render_template("login.html",
-                               error="Username and password are required.", next=next_url)
+                               error="Username is required.", next=next_url)
 
-    success, role, display_name_or_error = local_authenticate(username, password)
+    # Try admin auth first (requires password)
+    if password:
+        success, role, display_name_or_error = local_authenticate(username, password)
+        if success:
+            session.permanent = True
+            session["username"] = username
+            session["role"] = role
+            session["display_name"] = display_name_or_error
+            log.info("Local login OK — user=%s role=%s from %s", username, role, request.remote_addr)
 
-    if not success:
+            user_allowed = ("/cribl/portal", "/cribl/portal/", "/cribl/portal/api/submit", "/cribl/api/submit",
+                            "/cribl/entitlements", "/cribl/entitlements/", "/cribl/api/entitlements")
+            if role == "user" and next_url not in user_allowed:
+                next_url = "/cribl/portal"
+            return redirect(next_url)
+
+        # Password was provided but wrong — reject
         log.warning("Local login failed for user=%s from %s", username, request.remote_addr)
         return render_template("login.html",
                                error=display_name_or_error, next=next_url)
 
+    # No password — allow as regular user (portal access only)
     session.permanent = True
     session["username"] = username
-    session["role"] = role
-    session["display_name"] = display_name_or_error
-
-    log.info("Local login OK — user=%s role=%s from %s", username, role, request.remote_addr)
+    session["role"] = "user"
+    session["display_name"] = username
+    log.info("User login (no password) OK — user=%s from %s", username, request.remote_addr)
 
     user_allowed = ("/cribl/portal", "/cribl/portal/", "/cribl/portal/api/submit", "/cribl/api/submit",
                     "/cribl/entitlements", "/cribl/entitlements/", "/cribl/api/entitlements")
-    if role == "user" and next_url not in user_allowed:
+    if next_url not in user_allowed:
         next_url = "/cribl/portal"
-
     return redirect(next_url)
 
 
@@ -737,6 +802,7 @@ def portal_submit():
     worker_grp = (data.get("worker_group") or "default").strip()
     dest       = (data.get("dest") or "").strip()
     ilm_tier   = (data.get("ilm_tier") or "none").strip()
+    elk_capacity = data.get("elk_capacity") or {}
 
     log.info("submit — lan_id=%r  name=%r %r  apmid=%r  appname=%r  team=%r  region=%r  log_dest=%s  log_types=%s  groups=%s",
              lan_id, first_name, last_name, app_id, app_name, app_team, region, log_dests, log_types, groups)
@@ -754,6 +820,11 @@ def portal_submit():
     if not log_dests:                     errors.append("Select at least one log destination.")
     if not log_types:                     errors.append("Select at least one log type.")
     if not groups:                        errors.append("Select at least one entitlement group.")
+    if "elk" in log_dests:
+        if not elk_capacity.get("daily_log_size"):
+            errors.append("Daily Log Volume is required when ELK is selected.")
+        if not elk_capacity.get("eps"):
+            errors.append("Events Per Second (EPS) is required when ELK is selected.")
     if errors:
         return jsonify({"errors": errors}), 400
 
@@ -790,6 +861,7 @@ def portal_submit():
             "dest":               dest,
             "ilm_tier":           ilm_tier,
             "app_emails":         app_emails,
+            "elk_capacity":       elk_capacity if elk_capacity else None,
         }
         headers = {"Content-Type": "application/json"}
         if ETN_ONBOARDING_TOKEN:
@@ -843,6 +915,7 @@ def portal_submit():
             "worker_group":       worker_grp,
             "dest":               dest,
             "ilm_tier":           ilm_tier,
+            "elk_capacity":       elk_capacity if elk_capacity else None,
             "kibana_dashboard":   None,
             "logstash_pipeline":  None,
             "roles":              0,
@@ -873,12 +946,15 @@ def portal_submit():
                     app_team=app_team,
                     app_emails=app_emails,
                     region=region,
+                    workspace=workspace,
                     log_destinations=log_dests,
                     log_types=log_types,
                     entitlement_groups=groups,
                     worker_group=worker_grp,
+                    data_type=data_type,
                     dest=dest,
                     ilm_tier=ilm_tier,
+                    elk_capacity=elk_capacity if elk_capacity else None,
                     status="pending",
                 )
                 db.session.add(row)
@@ -906,12 +982,15 @@ def portal_submit():
         "app_team":           app_team,
         "app_emails":         app_emails,
         "region":             region,
+        "workspace":          workspace,
         "log_destinations":   log_dests,
         "log_types":          log_types,
+        "data_type":          data_type,
         "entitlement_groups": groups,
         "worker_group":       worker_grp,
         "dest":               dest,
         "ilm_tier":           ilm_tier,
+        "elk_capacity":       elk_capacity if elk_capacity else None,
         "kibana_dashboard":   None,
         "logstash_pipeline":  None,
         "roles":              0,
@@ -934,12 +1013,15 @@ def portal_submit():
                 app_team=app_team,
                 app_emails=app_emails,
                 region=region,
+                workspace=workspace,
                 log_destinations=log_dests,
                 log_types=log_types,
                 entitlement_groups=groups,
                 worker_group=worker_grp,
+                data_type=data_type,
                 dest=dest,
                 ilm_tier=ilm_tier,
+                elk_capacity=elk_capacity if elk_capacity else None,
                 kibana_dashboard=None,
                 logstash_pipeline=None,
                 roles=0,
@@ -966,6 +1048,78 @@ def portal_submit():
         return jsonify({"errors": [f"Failed to store request: {exc}"]}), 500
 
     return jsonify({"request_id": request_id})
+
+
+@app.route("/cribl/portal/api/ldap-lookup", methods=["GET"])
+@login_required
+def portal_ldap_lookup():
+    """Look up a user by lanId (sAMAccountName) in LDAP and return profile fields."""
+    lan_id = (request.args.get("lan_id") or "").strip()
+    if not lan_id:
+        return jsonify({"error": "lan_id is required"}), 400
+
+    lcfg = _ldap_cfg()
+    if not lcfg["server"] or not lcfg["base_dn"]:
+        return jsonify({"error": "LDAP is not configured"}), 503
+
+    from ldap3 import Server, Connection, SUBTREE, Tls
+    import ssl
+
+    try:
+        tls_config = Tls(validate=ssl.CERT_NONE) if lcfg["use_ssl"] else None
+        server = Server(lcfg["server"], use_ssl=lcfg["use_ssl"], tls=tls_config, connect_timeout=5)
+        conn = Connection(
+            server,
+            user=lcfg["bind_dn"],
+            password=lcfg["bind_pw"],
+            auto_bind=True,
+            read_only=True,
+            receive_timeout=10,
+        )
+    except Exception as exc:
+        log.error("LDAP connect failed: %s", exc)
+        return jsonify({"error": "LDAP connection failed"}), 503
+
+    try:
+        search_filter = f"(sAMAccountName={lan_id})"
+        attrs = [
+            "givenName", "sn", "displayName", "mail",
+            "department", "title", "sAMAccountName",
+            "memberOf", "telephoneNumber", "manager",
+        ]
+        conn.search(lcfg["base_dn"], search_filter, search_scope=SUBTREE, attributes=attrs)
+
+        if not conn.entries:
+            conn.unbind()
+            return jsonify({"found": False}), 200
+
+        entry = conn.entries[0]
+
+        def val(attr):
+            v = getattr(entry, attr, None)
+            return str(v) if v else ""
+
+        result = {
+            "found":       True,
+            "lan_id":      val("sAMAccountName"),
+            "first_name":  val("givenName"),
+            "last_name":   val("sn"),
+            "display_name": val("displayName"),
+            "email":       val("mail"),
+            "department":  val("department"),
+            "title":       val("title"),
+            "phone":       val("telephoneNumber"),
+        }
+        conn.unbind()
+        return jsonify(result), 200
+
+    except Exception as exc:
+        log.error("LDAP search failed for lan_id=%s: %s", lan_id, exc)
+        try:
+            conn.unbind()
+        except Exception:
+            pass
+        return jsonify({"error": "LDAP search failed"}), 500
 
 
 @app.route("/cribl/portal/admin/update-status", methods=["GET", "POST"])
@@ -1441,6 +1595,174 @@ def run_pusher():
         "returncode":    last_rc,
         "commands":      commands,
         "portal_update": portal_result,
+    })
+
+
+@app.route("/cribl/api/destinations/<worker_group>/<destination_id>", methods=["GET"])
+@admin_required
+def get_destination(worker_group: str, destination_id: str):
+    """Fetch a single destination from cribl_service."""
+    if not CRIBL_SERVICE_URL:
+        return jsonify({"error": "CRIBL_SERVICE_URL is not configured."}), 500
+    try:
+        body, status = _svc_get(
+            CRIBL_SERVICE_URL,
+            f"/api/v1/m/{worker_group}/destinations/{destination_id}",
+        )
+    except Exception as exc:
+        log.error("get-destination failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(body), status
+
+
+@app.route("/cribl/api/patch-destination", methods=["POST"])
+@admin_required
+def patch_destination():
+    """Patch (partial update) an existing Cribl destination via cribl_service."""
+    data = request.get_json(silent=True) or {}
+
+    errors = []
+    worker_group   = (data.get("worker_group") or "").strip()
+    destination_id = (data.get("destination_id") or "").strip()
+    patch_fields   = data.get("patch_fields") or {}
+
+    if not worker_group:
+        errors.append("Worker group is required.")
+    if not destination_id:
+        errors.append("Destination ID is required.")
+    if not patch_fields or not isinstance(patch_fields, dict):
+        errors.append("At least one field to patch is required.")
+
+    if errors:
+        log.warning("patch-destination validation failed: %s", errors)
+        return jsonify({"errors": errors}), 400
+
+    if not CRIBL_SERVICE_URL:
+        return jsonify({"errors": ["CRIBL_SERVICE_URL is not configured."]}), 500
+
+    log.info(
+        "patch-destination  wg=%s  dest_id=%s  fields=%s",
+        worker_group, destination_id, list(patch_fields.keys()),
+    )
+
+    try:
+        body, status = _svc_patch(
+            CRIBL_SERVICE_URL,
+            f"/api/v1/m/{worker_group}/destinations/{destination_id}",
+            json=patch_fields,
+        )
+    except Exception as exc:
+        log.error("patch-destination failed: %s", exc)
+        return jsonify({"errors": [f"Service error: {exc}"]}), 500
+
+    rc = 0 if status < 400 else 1
+    return jsonify({
+        "output":     json.dumps(body, indent=2),
+        "returncode": rc,
+        "status":     status,
+    })
+
+
+@app.route("/cribl/api/destinations/<worker_group>", methods=["GET"])
+@admin_required
+def list_destinations(worker_group: str):
+    """List all destinations for a worker group via cribl_service."""
+    if not CRIBL_SERVICE_URL:
+        return jsonify({"error": "CRIBL_SERVICE_URL is not configured."}), 500
+    try:
+        body, status = _svc_get(
+            CRIBL_SERVICE_URL,
+            f"/api/v1/m/{worker_group}/destinations",
+        )
+    except Exception as exc:
+        log.error("list-destinations failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(body), status
+
+
+@app.route("/cribl/api/bulk-patch-destinations", methods=["POST"])
+@admin_required
+def bulk_patch_destinations():
+    """Patch multiple destinations in one call.
+
+    Accepts:
+        worker_group:    str
+        patch_fields:    dict  — fields to apply to every matched destination
+        filter_type:     str   — optional, only patch destinations of this type
+        filter_prefix:   str   — optional, only patch destination IDs starting with this
+        destination_ids: list  — optional, explicit list of IDs to patch
+    """
+    data = request.get_json(silent=True) or {}
+
+    worker_group = (data.get("worker_group") or "").strip()
+    patch_fields = data.get("patch_fields") or {}
+    filter_type = (data.get("filter_type") or "").strip()
+    filter_prefix = (data.get("filter_prefix") or "").strip()
+    explicit_ids = data.get("destination_ids") or []
+
+    errors = []
+    if not worker_group:
+        errors.append("Worker group is required.")
+    if not patch_fields or not isinstance(patch_fields, dict):
+        errors.append("At least one field to patch is required.")
+    if errors:
+        return jsonify({"errors": errors}), 400
+
+    if not CRIBL_SERVICE_URL:
+        return jsonify({"errors": ["CRIBL_SERVICE_URL is not configured."]}), 500
+
+    # List all destinations
+    try:
+        all_dests, status = _svc_get(
+            CRIBL_SERVICE_URL,
+            f"/api/v1/m/{worker_group}/destinations",
+        )
+    except Exception as exc:
+        log.error("bulk-patch list failed: %s", exc)
+        return jsonify({"errors": [f"Failed to list destinations: {exc}"]}), 500
+
+    items = all_dests.get("items", all_dests) if isinstance(all_dests, dict) else all_dests
+
+    # Apply filters
+    if explicit_ids:
+        id_set = set(explicit_ids)
+        items = [d for d in items if d.get("id") in id_set]
+    if filter_type:
+        items = [d for d in items if d.get("type") == filter_type]
+    if filter_prefix:
+        items = [d for d in items if (d.get("id") or "").startswith(filter_prefix)]
+
+    if not items:
+        return jsonify({"errors": ["No destinations matched the filter criteria."]}), 400
+
+    log.info(
+        "bulk-patch-destinations  wg=%s  matched=%d  fields=%s",
+        worker_group, len(items), list(patch_fields.keys()),
+    )
+
+    results = []
+    for dest in items:
+        dest_id = dest.get("id")
+        try:
+            body, st = _svc_patch(
+                CRIBL_SERVICE_URL,
+                f"/api/v1/m/{worker_group}/destinations/{dest_id}",
+                json=patch_fields,
+            )
+            results.append({"id": dest_id, "status": st, "ok": st < 400})
+        except Exception as exc:
+            log.error("bulk-patch failed for %s: %s", dest_id, exc)
+            results.append({"id": dest_id, "status": 500, "ok": False, "error": str(exc)})
+
+    succeeded = sum(1 for r in results if r["ok"])
+    failed = len(results) - succeeded
+
+    return jsonify({
+        "output": json.dumps(results, indent=2),
+        "returncode": 0 if failed == 0 else 1,
+        "total": len(results),
+        "succeeded": succeeded,
+        "failed": failed,
     })
 
 

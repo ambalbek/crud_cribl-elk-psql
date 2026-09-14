@@ -55,6 +55,7 @@ def submit_request():
         "workspace", "worker_group", "region", "data_type",
         "log_destinations", "log_types", "ilm_tier", "entitlement_groups",
     }
+    # elk_capacity is intentionally stored in form_data (not a dedicated column)
     form_data = {k: v for k, v in body.items() if k not in known_keys}
 
     # Resolve pack from registry and pin at intake time

@@ -139,6 +139,7 @@
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab(event,'tab1')">📡 Cribl Pusher</button>
   <button class="tab-btn"        onclick="switchTab(event,'tab2')">⚡ ELK Roles + Cribl Routes</button>
+  <button class="tab-btn"        onclick="switchTab(event,'tab3')">🔧 Destination Patch</button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════
@@ -640,6 +641,213 @@
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════════
+     TAB 3 — Destination Patch
+     ════════════════════════════════════════════════════════════ -->
+<div id="tab3" class="tab-content">
+  <div class="app-layout">
+
+    <!-- LEFT: Form -->
+    <div>
+
+      <!-- Workspace -->
+      <div class="panel">
+        <p class="panel-title">Workspace</p>
+
+        {% set cribl_urls = config.get('cribl_urls', []) %}
+        <div class="form-group">
+          <label for="t3_cribl_url">Cribl URL <span style="font-weight:400">(optional — overrides config.json)</span></label>
+          {% if cribl_urls %}
+            <select id="t3_cribl_url">
+              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+            </select>
+          {% else %}
+            <input type="text" id="t3_cribl_url" placeholder="leave blank to use config.json">
+          {% endif %}
+        </div>
+
+        <div class="form-group">
+          <label for="t3_workspace">Workspace</label>
+          <select id="t3_workspace" onchange="onWorkspaceChange('t3')">
+            {% for name, ws in workspaces.items() %}
+            <option value="{{ name }}"
+              data-protected="{{ 'true' if ws.get('require_allow') else 'false' }}">
+              {{ name }}{% if ws.get('description') %}  —  {{ ws.description }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="t3_worker_group">Worker Group</label>
+          <select id="t3_worker_group">
+            <option value="">— select workspace first —</option>
+          </select>
+        </div>
+
+        <div id="t3_protected_warning" class="alert alert-warning hidden">
+          ⚠️ <strong>Protected workspace.</strong> You must check the box below before running.
+          <div style="margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-weight:500">
+              <input type="checkbox" id="t3_allow_prod"> Allow production writes
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Destination Target -->
+      <div class="panel">
+        <p class="panel-title">Destination Target</p>
+
+        <div class="form-group">
+          <div class="radio-group">
+            <label><input type="radio" name="t3_mode" value="single" checked onchange="onPatchModeChange()"> Single Destination</label>
+            <label><input type="radio" name="t3_mode" value="bulk" onchange="onPatchModeChange()"> Bulk (All / Filtered)</label>
+          </div>
+        </div>
+
+        <!-- Single mode -->
+        <div id="t3_single_target">
+          <div class="form-group">
+            <label for="t3_dest_id">Destination ID</label>
+            <input type="text" id="t3_dest_id" placeholder="e.g. azn-blob-storage-APP001">
+          </div>
+          <div class="form-group">
+            <button class="btn-primary" style="background:var(--accent2);width:auto;padding:8px 16px;font-size:.85rem;" onclick="fetchDestination()">
+              Fetch Current Config
+            </button>
+          </div>
+          <pre id="t3_current_dest" class="output-pre" style="min-height:80px;max-height:200px;font-size:.78rem;"># Click "Fetch Current Config" to load the destination...</pre>
+        </div>
+
+        <!-- Bulk mode -->
+        <div id="t3_bulk_target" class="hidden">
+          <p class="hint">Apply the same patch to multiple destinations. Use the filters below to narrow the scope, or leave all blank to patch every destination in the worker group.</p>
+
+          <div class="form-group">
+            <label for="t3_filter_type">Filter by Type</label>
+            <select id="t3_filter_type">
+              <option value="">— all types —</option>
+              <option value="azure_blob">azure_blob</option>
+              <option value="s3">s3</option>
+              <option value="elastic">elastic</option>
+              <option value="splunk">splunk</option>
+              <option value="syslog">syslog</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="t3_filter_prefix">Filter by ID Prefix</label>
+            <input type="text" id="t3_filter_prefix" placeholder="e.g. azn-blob-storage- (only destinations whose ID starts with this)">
+          </div>
+
+          <div class="form-group">
+            <button class="btn-primary" style="background:var(--accent2);width:auto;padding:8px 16px;font-size:.85rem;" onclick="previewBulkTargets()">
+              Preview Matching Destinations
+            </button>
+          </div>
+          <pre id="t3_bulk_preview" class="output-pre" style="min-height:60px;max-height:200px;font-size:.78rem;"># Click "Preview" to see which destinations will be patched...</pre>
+        </div>
+      </div>
+
+      <!-- Patch Fields -->
+      <div class="panel">
+        <p class="panel-title">Fields to Patch</p>
+        <p class="hint">Only fill in the fields you want to update. Empty fields are ignored.</p>
+
+        <div class="form-group">
+          <label for="t3_patch_description">Description</label>
+          <input type="text" id="t3_patch_description" placeholder="new description">
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_container">Container Name</label>
+          <input type="text" id="t3_patch_container" placeholder="new container name">
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_type">Type</label>
+          <select id="t3_patch_type">
+            <option value="">— no change —</option>
+            <option value="azure_blob">azure_blob</option>
+            <option value="s3">s3</option>
+            <option value="elastic">elastic</option>
+            <option value="splunk">splunk</option>
+            <option value="syslog">syslog</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_disabled">Disabled</label>
+          <select id="t3_patch_disabled">
+            <option value="">— no change —</option>
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_compress">Compress</label>
+          <select id="t3_patch_compress">
+            <option value="">— no change —</option>
+            <option value="none">none</option>
+            <option value="gzip">gzip</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_partition">Partition Expression</label>
+          <input type="text" id="t3_patch_partition" placeholder="e.g. `C.Time.strftime(_time, '%Y/%m/%d/%H')` or year=${year}/month=${month}">
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_prefix">Blob Prefix / Path</label>
+          <input type="text" id="t3_patch_prefix" placeholder="e.g. logs/app001/">
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_connstr">Connection String (secret)</label>
+          <input type="password" id="t3_patch_connstr" placeholder="DefaultEndpointsProtocol=https;AccountName=...">
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_maxsize">Max File Size (MB)</label>
+          <input type="number" id="t3_patch_maxsize" placeholder="e.g. 32" min="1">
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_maxopen">Max File Open Time (sec)</label>
+          <input type="number" id="t3_patch_maxopen" placeholder="e.g. 300" min="1">
+        </div>
+        <div class="form-group">
+          <label for="t3_patch_createcontainer">Create Container</label>
+          <select id="t3_patch_createcontainer">
+            <option value="">— no change —</option>
+            <option value="false">false (required — manual creation)</option>
+            <option value="true">true</option>
+          </select>
+        </div>
+
+        <details>
+          <summary>Raw JSON override</summary>
+          <div class="details-body">
+            <p class="hint">Provide arbitrary JSON fields to merge into the PATCH payload. Overrides form fields above.</p>
+            <div class="form-group">
+              <label for="t3_patch_raw">JSON</label>
+              <textarea id="t3_patch_raw" rows="5" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:8px 10px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.84rem;resize:vertical;" placeholder='{"partitionExpr": "myPartition", "maxFileSizeMB": 32}'></textarea>
+            </div>
+          </div>
+        </details>
+
+        <button class="btn-primary" id="t3_run_btn" onclick="submitDestPatch()">
+          Patch Destination(s)
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Output -->
+    <div>
+      <div class="panel output-sticky">
+        <p class="panel-title">Output</p>
+        <div id="t3_status"></div>
+        <pre id="t3_output" class="output-pre"># Output will appear here after you click Patch Destination...</pre>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <footer>Cribl Framework — Pusher &nbsp;&middot;&nbsp; Route management for Cribl &amp; ELK</footer>
 
 <!-- ── JavaScript ─────────────────────────────────────────────────────────── -->
@@ -910,9 +1118,194 @@ async function submitRodeRm() {
   }
 }
 
+// ── Fetch current destination config (Tab 3) ────────────────────────────
+async function fetchDestination() {
+  const destId = (document.getElementById('t3_dest_id').value || '').trim();
+  const wg     = document.getElementById('t3_worker_group').value;
+  const pre    = document.getElementById('t3_current_dest');
+
+  if (!destId || !wg) {
+    pre.textContent = '# Please select a worker group and enter a destination ID.';
+    return;
+  }
+
+  pre.textContent = 'Fetching...';
+  try {
+    const res  = await fetch(`/cribl/api/destinations/${wg}/${encodeURIComponent(destId)}`);
+    const data = await res.json();
+    if (res.ok) {
+      pre.textContent = JSON.stringify(data, null, 2);
+    } else {
+      pre.textContent = `# Error ${res.status}: ${JSON.stringify(data)}`;
+    }
+  } catch (err) {
+    pre.textContent = `# Request failed: ${err.message}`;
+  }
+}
+
+// ── Tab 3 mode toggle ─────────────────────────────────────────────────
+function onPatchModeChange() {
+  const mode = document.querySelector('input[name="t3_mode"]:checked').value;
+  document.getElementById('t3_single_target').classList.toggle('hidden', mode !== 'single');
+  document.getElementById('t3_bulk_target').classList.toggle('hidden', mode !== 'bulk');
+}
+
+// ── Preview bulk targets ──────────────────────────────────────────────
+async function previewBulkTargets() {
+  const wg  = document.getElementById('t3_worker_group').value;
+  const pre = document.getElementById('t3_bulk_preview');
+
+  if (!wg) {
+    pre.textContent = '# Please select a worker group first.';
+    return;
+  }
+
+  pre.textContent = 'Fetching destinations...';
+  try {
+    const res  = await fetch(`/cribl/api/destinations/${wg}`);
+    const data = await res.json();
+    if (!res.ok) {
+      pre.textContent = `# Error ${res.status}: ${JSON.stringify(data)}`;
+      return;
+    }
+    let items = data.items || data;
+    if (!Array.isArray(items)) items = [];
+
+    const filterType   = document.getElementById('t3_filter_type').value;
+    const filterPrefix = document.getElementById('t3_filter_prefix').value.trim();
+
+    if (filterType)   items = items.filter(d => d.type === filterType);
+    if (filterPrefix)  items = items.filter(d => (d.id || '').startsWith(filterPrefix));
+
+    if (items.length === 0) {
+      pre.textContent = '# No destinations match the current filters.';
+    } else {
+      const lines = items.map(d => `${d.id}  (type: ${d.type || '?'})`);
+      pre.textContent = `# ${items.length} destination(s) will be patched:\n` + lines.join('\n');
+    }
+  } catch (err) {
+    pre.textContent = `# Request failed: ${err.message}`;
+  }
+}
+
+// ── Gather patch fields from form ─────────────────────────────────────
+function gatherPatchFields(statusEl) {
+  const patchFields = {};
+
+  const desc = document.getElementById('t3_patch_description').value.trim();
+  if (desc) patchFields.description = desc;
+
+  const container = document.getElementById('t3_patch_container').value.trim();
+  if (container) patchFields.containerName = container;
+
+  const type = document.getElementById('t3_patch_type').value;
+  if (type) patchFields.type = type;
+
+  const disabled = document.getElementById('t3_patch_disabled').value;
+  if (disabled) patchFields.disabled = disabled === 'true';
+
+  const compress = document.getElementById('t3_patch_compress').value;
+  if (compress) patchFields.compress = compress;
+
+  const partition = document.getElementById('t3_patch_partition').value.trim();
+  if (partition) patchFields.partitionExpr = partition;
+
+  const prefix = document.getElementById('t3_patch_prefix').value.trim();
+  if (prefix) patchFields.prefix = prefix;
+
+  const connStr = document.getElementById('t3_patch_connstr').value.trim();
+  if (connStr) patchFields.connectionString = connStr;
+
+  const maxSize = document.getElementById('t3_patch_maxsize').value;
+  if (maxSize) patchFields.maxFileSizeMB = parseInt(maxSize, 10);
+
+  const maxOpen = document.getElementById('t3_patch_maxopen').value;
+  if (maxOpen) patchFields.maxFileOpenTimeSec = parseInt(maxOpen, 10);
+
+  const createContainer = document.getElementById('t3_patch_createcontainer').value;
+  if (createContainer) patchFields.createContainer = createContainer === 'true';
+
+  // Raw JSON override
+  const rawText = (document.getElementById('t3_patch_raw').value || '').trim();
+  if (rawText) {
+    try {
+      const rawObj = JSON.parse(rawText);
+      Object.assign(patchFields, rawObj);
+    } catch (e) {
+      if (statusEl) statusEl.innerHTML = `<div class="alert alert-error">Invalid JSON in raw override: ${esc(e.message)}</div>`;
+      return null;
+    }
+  }
+  return patchFields;
+}
+
+// ── Submit Tab 3 — Destination Patch (single or bulk) ─────────────────
+async function submitDestPatch() {
+  const statusEl = document.getElementById('t3_status');
+  const outputEl = document.getElementById('t3_output');
+  const mode     = document.querySelector('input[name="t3_mode"]:checked').value;
+  const wg       = document.getElementById('t3_worker_group').value;
+
+  const patchFields = gatherPatchFields(statusEl);
+  if (!patchFields) return;
+
+  statusEl.innerHTML   = '';
+  outputEl.textContent = 'Running...';
+  setLoading('t3_run_btn', 'Patch Destination(s)', true);
+
+  try {
+    let res, data;
+
+    if (mode === 'single') {
+      const destId = (document.getElementById('t3_dest_id').value || '').trim();
+      res  = await fetch('/cribl/api/patch-destination', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          worker_group:   wg,
+          destination_id: destId,
+          patch_fields:   patchFields,
+        }),
+      });
+    } else {
+      const filterType   = document.getElementById('t3_filter_type').value;
+      const filterPrefix = document.getElementById('t3_filter_prefix').value.trim();
+      res = await fetch('/cribl/api/bulk-patch-destinations', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          worker_group:   wg,
+          patch_fields:   patchFields,
+          filter_type:    filterType   || undefined,
+          filter_prefix:  filterPrefix || undefined,
+        }),
+      });
+    }
+
+    data = await res.json();
+
+    if (res.status === 400) {
+      renderErrors('t3_status', data.errors);
+      outputEl.textContent = '';
+    } else {
+      outputEl.textContent = data.output || JSON.stringify(data, null, 2);
+      renderStatus('t3_status', data.returncode);
+      if (mode === 'bulk' && data.total != null) {
+        statusEl.innerHTML += `<div class="alert alert-${data.failed ? 'warning' : 'success'}">${data.succeeded}/${data.total} destinations patched successfully${data.failed ? `, ${data.failed} failed` : ''}.</div>`;
+      }
+    }
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert-error">Request failed: ${esc(err.message)}</div>`;
+    outputEl.textContent = '';
+  } finally {
+    setLoading('t3_run_btn', 'Patch Destination(s)', false);
+  }
+}
+
 // ── Init on page load ─────────────────────────────────────────────────────
 onWorkspaceChange('t1');
 onWorkspaceChange('t2');
+onWorkspaceChange('t3');
 </script>
 </body>
 </html>

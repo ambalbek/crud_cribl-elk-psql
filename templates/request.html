@@ -350,6 +350,7 @@
       <div class="form-group">
         <label for="lan_id">lanId <span class="required-star">*</span></label>
         <input type="text" id="lan_id" placeholder="e.g. jsmith01" autocomplete="off" value="{{ current_user }}" />
+        <p id="ldap-status" class="tag-hint"></p>
       </div>
 
       <div class="form-group" style="display:flex;gap:12px;">
@@ -476,6 +477,45 @@
         <input type="text" id="log_dest_other" placeholder="Specify other destination" autocomplete="off" style="display:none;margin-top:8px;" />
       </div>
 
+      <!-- ELK Capacity Questionnaire (shown when ELK is selected) -->
+      <div id="elk-capacity-section" style="display:none;">
+        <p class="section-label">ELK Capacity Details</p>
+
+        <div class="form-group" style="display:flex;gap:12px;">
+          <div style="flex:1;">
+            <label for="daily_log_size">Daily Log Volume <span class="required-star">*</span></label>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="daily_log_size" placeholder="e.g. 50" style="flex:1;" />
+              <select id="daily_log_unit" style="width:auto;min-width:70px;">
+                <option value="MB">MB</option>
+                <option value="GB" selected>GB</option>
+                <option value="TB">TB</option>
+              </select>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <label for="eps">Events Per Second (EPS) <span class="required-star">*</span></label>
+            <input type="text" id="eps" placeholder="e.g. 5000" />
+          </div>
+        </div>
+
+        <div class="form-group" style="display:flex;gap:12px;">
+          <div style="flex:1;">
+            <label for="retention_days">Retention (days)</label>
+            <input type="text" id="retention_days" placeholder="e.g. 90" />
+          </div>
+          <div style="flex:1;">
+            <label for="peak_eps">Peak EPS (burst)</label>
+            <input type="text" id="peak_eps" placeholder="e.g. 15000" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="avg_event_size">Avg Event Size (bytes)</label>
+          <input type="text" id="avg_event_size" placeholder="e.g. 1024" />
+        </div>
+      </div>
+
       <div class="form-group">
         <label>Log Type <span class="required-star">*</span></label>
         <div class="region-group" style="flex-wrap:wrap;">
@@ -565,8 +605,11 @@
     }
   }
 
-  // Populate worker groups on page load
-  document.addEventListener('DOMContentLoaded', onWorkspaceChange);
+  // Populate worker groups on page load + auto-lookup if lanId pre-filled
+  document.addEventListener('DOMContentLoaded', function() {
+    onWorkspaceChange();
+    if (document.getElementById('lan_id').value.trim()) ldapLookup();
+  });
 
   // ── Tag input ──────────────────────────────────────────────────────────────
   const tags = [];
@@ -659,12 +702,81 @@
     }
   });
 
+  // ── LDAP lookup on lanId ────────────────────────────────────────────────
+  let lastLdapLookup = '';
+
+  async function ldapLookup() {
+    const lanId = document.getElementById('lan_id').value.trim();
+    const statusEl = document.getElementById('ldap-status');
+
+    if (!lanId || lanId === lastLdapLookup) return;
+    lastLdapLookup = lanId;
+
+    statusEl.textContent = 'Looking up user...';
+    statusEl.style.color = 'var(--muted)';
+
+    try {
+      const res = await fetch(`/cribl/portal/api/ldap-lookup?lan_id=${encodeURIComponent(lanId)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        statusEl.textContent = data.error || 'Lookup failed';
+        statusEl.style.color = '#b91c1c';
+        return;
+      }
+
+      if (!data.found) {
+        statusEl.textContent = 'User not found in directory — fill fields manually.';
+        statusEl.style.color = 'var(--muted)';
+        return;
+      }
+
+      // Auto-fill fields
+      if (data.first_name) document.getElementById('first_name').value = data.first_name;
+      if (data.last_name)  document.getElementById('last_name').value  = data.last_name;
+      if (data.department) document.getElementById('app_team').value   = data.department;
+      if (data.email) {
+        // Add email to email tags if not already present
+        if (!emailTags.includes(data.email)) {
+          addEmailTag(data.email);
+        }
+      }
+
+      statusEl.innerHTML = `Found: <strong>${esc(data.display_name || data.first_name + ' ' + data.last_name)}</strong>` +
+        (data.department ? ` &mdash; ${esc(data.department)}` : '') +
+        (data.title ? ` (${esc(data.title)})` : '');
+      statusEl.style.color = 'var(--success)';
+
+    } catch (err) {
+      statusEl.textContent = 'Lookup failed: ' + err.message;
+      statusEl.style.color = '#b91c1c';
+    }
+  }
+
+  document.getElementById('lan_id').addEventListener('blur', ldapLookup);
+  document.getElementById('lan_id').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); ldapLookup(); }
+  });
+
   // ── Submit ─────────────────────────────────────────────────────────────────
   function toggleOtherDest(cb) {
     const otherInput = document.getElementById('log_dest_other');
     otherInput.style.display = cb.checked ? 'block' : 'none';
     if (!cb.checked) otherInput.value = '';
   }
+
+  function toggleElkCapacity() {
+    const elkChecked = document.querySelector('input[name="log_dest"][value="elk"]').checked;
+    document.getElementById('elk-capacity-section').style.display = elkChecked ? '' : 'none';
+    if (!elkChecked) {
+      ['daily_log_size', 'eps', 'retention_days', 'peak_eps', 'avg_event_size'].forEach(id => {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('daily_log_unit').value = 'GB';
+    }
+  }
+  // Attach toggle to the ELK checkbox
+  document.querySelector('input[name="log_dest"][value="elk"]').addEventListener('change', toggleElkCapacity);
 
   function submitForm() {
     const lanId     = document.getElementById('lan_id').value.trim();
@@ -687,6 +799,15 @@
     });
     const logTypes  = [...document.querySelectorAll('input[name="log_type"]:checked')].map(c => c.value);
 
+    // ELK capacity fields
+    const elkSelected  = logDests.includes('elk');
+    const dailyLogSize = document.getElementById('daily_log_size').value.trim();
+    const dailyLogUnit = document.getElementById('daily_log_unit').value;
+    const epsVal       = document.getElementById('eps').value.trim();
+    const retDays      = document.getElementById('retention_days').value.trim();
+    const peakEps      = document.getElementById('peak_eps').value.trim();
+    const avgEvtSize   = document.getElementById('avg_event_size').value.trim();
+
     const errors = [];
     if (!lanId)            errors.push('lanId is required.');
     if (!firstName)        errors.push('First Name is required.');
@@ -703,6 +824,10 @@
     if (!logDests.length)  errors.push('Select at least one log destination.');
     if (!logTypes.length)  errors.push('Select at least one log type.');
     if (!tags.length)      errors.push('Add at least one entitlement group.');
+    if (elkSelected) {
+      if (!dailyLogSize)   errors.push('Daily Log Volume is required when ELK is selected.');
+      if (!epsVal)          errors.push('Events Per Second (EPS) is required when ELK is selected.');
+    }
 
     const errorBox  = document.getElementById('error-box');
     const errorList = document.getElementById('error-list');
@@ -737,6 +862,16 @@
         log_destinations: logDests,
         log_types: logTypes,
         groups: tags,
+        ...(elkSelected ? {
+          elk_capacity: {
+            daily_log_size: dailyLogSize,
+            daily_log_unit: dailyLogUnit,
+            eps: epsVal,
+            ...(retDays   ? { retention_days: retDays }   : {}),
+            ...(peakEps   ? { peak_eps: peakEps }         : {}),
+            ...(avgEvtSize ? { avg_event_size: avgEvtSize } : {}),
+          }
+        } : {}),
       }),
     })
     .then(res => {
@@ -779,6 +914,8 @@
     document.getElementById('lan_id').value    = '';
     document.getElementById('first_name').value = '';
     document.getElementById('last_name').value  = '';
+    lastLdapLookup = '';
+    document.getElementById('ldap-status').textContent = '';
     document.getElementById('apmid').value     = '';
     document.getElementById('appname').value   = '';
     document.getElementById('app_team').value  = '';
@@ -793,6 +930,11 @@
     document.querySelectorAll('input[name="log_dest"]').forEach(c => c.checked = false);
     document.getElementById('log_dest_other').value = '';
     document.getElementById('log_dest_other').style.display = 'none';
+    document.getElementById('elk-capacity-section').style.display = 'none';
+    ['daily_log_size', 'eps', 'retention_days', 'peak_eps', 'avg_event_size'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('daily_log_unit').value = 'GB';
     document.querySelectorAll('input[name="log_type"]').forEach(c => c.checked = false);
     tags.length = 0;
     renderTags();
