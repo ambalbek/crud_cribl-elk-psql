@@ -505,7 +505,9 @@ def _svc_get(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
     if not base_url:
         raise RuntimeError("Service URL is not configured")
     url = base_url + path
-    resp = http_client.get(url, timeout=120, **kwargs)
+    # Merge extra headers without clobbering kwargs
+    extra_hdrs = kwargs.pop("headers", None)
+    resp = http_client.get(url, timeout=120, headers=extra_hdrs, **kwargs)
     try:
         body = resp.json()
     except (ValueError, TypeError):
@@ -537,12 +539,61 @@ def _svc_patch(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
     if not base_url:
         raise RuntimeError("Service URL is not configured")
     url = base_url + path
-    resp = http_client.patch(url, timeout=120, **kwargs)
+    extra_hdrs = kwargs.pop("headers", None)
+    resp = http_client.patch(url, timeout=120, headers=extra_hdrs, **kwargs)
     try:
         body = resp.json()
     except (ValueError, TypeError):
         body = {"raw": resp.text}
     return body, resp.status_code
+
+
+def _cribl_base_and_headers(
+    cribl_url: str = "",
+    token: str = "",
+    username: str = "",
+    password: str = "",
+) -> tuple[str, dict]:
+    """Return (base_url, headers) for Cribl API calls.
+
+    Resolution order:
+    1. Explicit cribl_url/token/user/pass passed from the form
+    2. CRIBL_SERVICE_URL env var (internal microservice proxy — no auth needed)
+    3. config.json base_url + credentials
+    """
+    import base64
+
+    config = load_config()
+
+    base_url = (
+        cribl_url.rstrip("/")
+        or CRIBL_SERVICE_URL
+        or (config.get("base_url") or "").rstrip("/")
+    )
+    if not base_url:
+        raise RuntimeError(
+            "No Cribl URL configured. Set it in the form, CRIBL_SERVICE_URL env var, or config.json base_url."
+        )
+
+    headers: dict[str, str] = {}
+
+    # If using CRIBL_SERVICE_URL and no explicit creds, no auth needed (internal proxy)
+    if not cribl_url and CRIBL_SERVICE_URL and not token and not username:
+        return base_url, headers
+
+    # Resolve credentials: form overrides → config.json fallback
+    creds = config.get("credentials", {})
+    resolved_token = token or creds.get("token", "")
+    resolved_user  = username or creds.get("username", "")
+    resolved_pass  = password or creds.get("password", "")
+
+    if resolved_token:
+        headers["Authorization"] = f"Bearer {resolved_token}"
+    elif resolved_user and resolved_pass:
+        b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
+        headers["Authorization"] = f"Basic {b64}"
+
+    return base_url, headers
 
 
 # ── Command builders (for subprocess calls to CLI scripts) ─────────────────────
@@ -793,6 +844,7 @@ def portal_submit():
     app_id     = (data.get("apmid")    or "").strip()
     app_name   = (data.get("appname")  or "").strip()
     app_team   = (data.get("app_team") or "").strip()
+    ays_group  = (data.get("ays_group") or "").strip()
     app_emails = [e for e in (data.get("app_emails") or []) if e]
     region     = (data.get("region")   or "").strip()
     log_dests  = [d for d in (data.get("log_destinations") or []) if d]
@@ -816,6 +868,7 @@ def portal_submit():
     elif not re.match(r"^\w+$", app_name):
                                           errors.append("App Name must be a single word using only letters, numbers, and underscores.")
     if not app_team:                      errors.append("Application Team is required.")
+    if not ays_group:                     errors.append("AYS Group Name is required.")
     if region not in ("azn", "azs"):      errors.append("Region must be azn or azs.")
     if not log_dests:                     errors.append("Select at least one log destination.")
     if not log_types:                     errors.append("Select at least one log type.")
@@ -846,6 +899,7 @@ def portal_submit():
             "requestor_name":  req_name,
             "requestor_email": app_emails[0] if app_emails else f"{lan_id}@company.com",
             "team":        app_team,
+            "ays_group":   ays_group,
             "environment": ws_env,
             # Everything else preserved in form_data
             "lan_id":             lan_id,
@@ -905,6 +959,7 @@ def portal_submit():
             "apmid":              app_id,
             "appname":            app_name,
             "app_team":           app_team,
+            "ays_group":          ays_group,
             "app_emails":         app_emails,
             "region":             region,
             "workspace":          workspace,
@@ -944,6 +999,7 @@ def portal_submit():
                     apmid=app_id,
                     appname=app_name,
                     app_team=app_team,
+                    ays_group=ays_group,
                     app_emails=app_emails,
                     region=region,
                     workspace=workspace,
@@ -1601,13 +1657,18 @@ def run_pusher():
 @app.route("/cribl/api/destinations/<worker_group>/<destination_id>", methods=["GET"])
 @admin_required
 def get_destination(worker_group: str, destination_id: str):
-    """Fetch a single destination from cribl_service."""
-    if not CRIBL_SERVICE_URL:
-        return jsonify({"error": "CRIBL_SERVICE_URL is not configured."}), 500
+    """Fetch a single destination from cribl_service or direct Cribl API."""
     try:
+        base, hdrs = _cribl_base_and_headers(
+            cribl_url=request.args.get("cribl_url", ""),
+            token=request.args.get("token", ""),
+            username=request.args.get("username", ""),
+            password=request.args.get("password", ""),
+        )
         body, status = _svc_get(
-            CRIBL_SERVICE_URL,
+            base,
             f"/api/v1/m/{worker_group}/destinations/{destination_id}",
+            headers=hdrs,
         )
     except Exception as exc:
         log.error("get-destination failed: %s", exc)
@@ -1637,19 +1698,23 @@ def patch_destination():
         log.warning("patch-destination validation failed: %s", errors)
         return jsonify({"errors": errors}), 400
 
-    if not CRIBL_SERVICE_URL:
-        return jsonify({"errors": ["CRIBL_SERVICE_URL is not configured."]}), 500
-
     log.info(
         "patch-destination  wg=%s  dest_id=%s  fields=%s",
         worker_group, destination_id, list(patch_fields.keys()),
     )
 
     try:
+        base, hdrs = _cribl_base_and_headers(
+            cribl_url=data.get("cribl_url", ""),
+            token=data.get("token", ""),
+            username=data.get("username", ""),
+            password=data.get("password", ""),
+        )
         body, status = _svc_patch(
-            CRIBL_SERVICE_URL,
+            base,
             f"/api/v1/m/{worker_group}/destinations/{destination_id}",
             json=patch_fields,
+            headers=hdrs,
         )
     except Exception as exc:
         log.error("patch-destination failed: %s", exc)
@@ -1666,13 +1731,18 @@ def patch_destination():
 @app.route("/cribl/api/destinations/<worker_group>", methods=["GET"])
 @admin_required
 def list_destinations(worker_group: str):
-    """List all destinations for a worker group via cribl_service."""
-    if not CRIBL_SERVICE_URL:
-        return jsonify({"error": "CRIBL_SERVICE_URL is not configured."}), 500
+    """List all destinations for a worker group."""
     try:
+        base, hdrs = _cribl_base_and_headers(
+            cribl_url=request.args.get("cribl_url", ""),
+            token=request.args.get("token", ""),
+            username=request.args.get("username", ""),
+            password=request.args.get("password", ""),
+        )
         body, status = _svc_get(
-            CRIBL_SERVICE_URL,
+            base,
             f"/api/v1/m/{worker_group}/destinations",
+            headers=hdrs,
         )
     except Exception as exc:
         log.error("list-destinations failed: %s", exc)
@@ -1708,14 +1778,22 @@ def bulk_patch_destinations():
     if errors:
         return jsonify({"errors": errors}), 400
 
-    if not CRIBL_SERVICE_URL:
-        return jsonify({"errors": ["CRIBL_SERVICE_URL is not configured."]}), 500
+    try:
+        base, hdrs = _cribl_base_and_headers(
+            cribl_url=data.get("cribl_url", ""),
+            token=data.get("token", ""),
+            username=data.get("username", ""),
+            password=data.get("password", ""),
+        )
+    except Exception as exc:
+        return jsonify({"errors": [str(exc)]}), 500
 
     # List all destinations
     try:
         all_dests, status = _svc_get(
-            CRIBL_SERVICE_URL,
+            base,
             f"/api/v1/m/{worker_group}/destinations",
+            headers=hdrs,
         )
     except Exception as exc:
         log.error("bulk-patch list failed: %s", exc)
@@ -1745,9 +1823,10 @@ def bulk_patch_destinations():
         dest_id = dest.get("id")
         try:
             body, st = _svc_patch(
-                CRIBL_SERVICE_URL,
+                base,
                 f"/api/v1/m/{worker_group}/destinations/{dest_id}",
                 json=patch_fields,
+                headers=hdrs,
             )
             results.append({"id": dest_id, "status": st, "ok": st < 400})
         except Exception as exc:

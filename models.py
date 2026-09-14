@@ -21,6 +21,7 @@ class OnboardingRequest(db.Model):
     apmid = db.Column(db.String(100), nullable=False, index=True)
     appname = db.Column(db.String(100), nullable=False)
     app_team = db.Column(db.String(200), nullable=False, default="")
+    ays_group = db.Column(db.String(200), nullable=True)
     app_emails = db.Column(db.JSON, nullable=False, default=list)
     region = db.Column(db.String(10), nullable=False)
     log_destinations = db.Column(db.JSON, nullable=False, default=list)
@@ -49,6 +50,7 @@ class OnboardingRequest(db.Model):
             "apm":                self.apmid,
             "name":               self.appname,
             "app_team":           self.app_team,
+            "ays_group":          self.ays_group,
             "app_emails":         self.app_emails,
             "region":             self.region,
             "log_destinations":   self.log_destinations,

@@ -693,6 +693,28 @@
             </label>
           </div>
         </div>
+
+        <details>
+          <summary>Credentials override</summary>
+          <div class="details-body">
+            <p class="hint">Leave blank to fall back to config.json</p>
+            <div class="form-group">
+              <label for="t3_token">Bearer Token</label>
+              <input type="password" id="t3_token" placeholder="leave blank to use config.json">
+            </div>
+            <p style="color:var(--muted);font-size:.84rem;margin:-2px 0 10px">— or username / password —</p>
+            <div class="col-2">
+              <div class="form-group">
+                <label for="t3_username">Username</label>
+                <input type="text" id="t3_username">
+              </div>
+              <div class="form-group">
+                <label for="t3_password">Password</label>
+                <input type="password" id="t3_password">
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <!-- Destination Target -->
@@ -1119,6 +1141,20 @@ async function submitRodeRm() {
 }
 
 // ── Fetch current destination config (Tab 3) ────────────────────────────
+function _t3ConnParams() {
+  const params = new URLSearchParams();
+  const url  = document.getElementById('t3_cribl_url').value;
+  const tok  = document.getElementById('t3_token').value;
+  const user = document.getElementById('t3_username').value;
+  const pass_ = document.getElementById('t3_password').value;
+  if (url)   params.set('cribl_url', url);
+  if (tok)   params.set('token', tok);
+  if (user)  params.set('username', user);
+  if (pass_) params.set('password', pass_);
+  const qs = params.toString();
+  return qs ? '?' + qs : '';
+}
+
 async function fetchDestination() {
   const destId = (document.getElementById('t3_dest_id').value || '').trim();
   const wg     = document.getElementById('t3_worker_group').value;
@@ -1131,7 +1167,7 @@ async function fetchDestination() {
 
   pre.textContent = 'Fetching...';
   try {
-    const res  = await fetch(`/cribl/api/destinations/${wg}/${encodeURIComponent(destId)}`);
+    const res  = await fetch(`/cribl/api/destinations/${wg}/${encodeURIComponent(destId)}${_t3ConnParams()}`);
     const data = await res.json();
     if (res.ok) {
       pre.textContent = JSON.stringify(data, null, 2);
@@ -1162,7 +1198,7 @@ async function previewBulkTargets() {
 
   pre.textContent = 'Fetching destinations...';
   try {
-    const res  = await fetch(`/cribl/api/destinations/${wg}`);
+    const res  = await fetch(`/cribl/api/destinations/${wg}${_t3ConnParams()}`);
     const data = await res.json();
     if (!res.ok) {
       pre.textContent = `# Error ${res.status}: ${JSON.stringify(data)}`;
@@ -1245,6 +1281,10 @@ async function submitDestPatch() {
   const outputEl = document.getElementById('t3_output');
   const mode     = document.querySelector('input[name="t3_mode"]:checked').value;
   const wg       = document.getElementById('t3_worker_group').value;
+  const criblUrl = document.getElementById('t3_cribl_url').value || '';
+  const token    = document.getElementById('t3_token').value || '';
+  const username = document.getElementById('t3_username').value || '';
+  const password = document.getElementById('t3_password').value || '';
 
   const patchFields = gatherPatchFields(statusEl);
   if (!patchFields) return;
@@ -1256,6 +1296,8 @@ async function submitDestPatch() {
   try {
     let res, data;
 
+    const connInfo = { cribl_url: criblUrl, token, username, password };
+
     if (mode === 'single') {
       const destId = (document.getElementById('t3_dest_id').value || '').trim();
       res  = await fetch('/cribl/api/patch-destination', {
@@ -1265,6 +1307,7 @@ async function submitDestPatch() {
           worker_group:   wg,
           destination_id: destId,
           patch_fields:   patchFields,
+          ...connInfo,
         }),
       });
     } else {
@@ -1278,6 +1321,7 @@ async function submitDestPatch() {
           patch_fields:   patchFields,
           filter_type:    filterType   || undefined,
           filter_prefix:  filterPrefix || undefined,
+          ...connInfo,
         }),
       });
     }

@@ -381,7 +381,12 @@
       </div>
 
       <div class="form-group">
-        <label>App Emails</label>
+        <label for="ays_group">AYS Group Name <span class="required-star">*</span></label>
+        <input type="text" id="ays_group" placeholder="e.g. AYS-Platform-Eng" autocomplete="off" />
+      </div>
+
+      <div class="form-group">
+        <label>App Emails <span class="required-star">*</span></label>
         <div class="tag-input-wrap" id="email-tag-wrap" onclick="document.getElementById('email-tag-input').focus()">
           <input
             type="text"
@@ -431,7 +436,7 @@
       </div>
 
       <div class="form-group">
-        <label for="ilm_tier">ILM Tier</label>
+        <label for="ilm_tier">ILM Tier <span class="required-star">*</span></label>
         <select id="ilm_tier">
           <option value="none">none</option>
           <option value="hot">hot</option>
@@ -501,17 +506,17 @@
 
         <div class="form-group" style="display:flex;gap:12px;">
           <div style="flex:1;">
-            <label for="retention_days">Retention (days)</label>
+            <label for="retention_days">Retention (days) <span class="required-star">*</span></label>
             <input type="text" id="retention_days" placeholder="e.g. 90" />
           </div>
           <div style="flex:1;">
-            <label for="peak_eps">Peak EPS (burst)</label>
+            <label for="peak_eps">Peak EPS (burst) <span class="required-star">*</span></label>
             <input type="text" id="peak_eps" placeholder="e.g. 15000" />
           </div>
         </div>
 
         <div class="form-group">
-          <label for="avg_event_size">Avg Event Size (bytes)</label>
+          <label for="avg_event_size">Avg Event Size (bytes) <span class="required-star">*</span></label>
           <input type="text" id="avg_event_size" placeholder="e.g. 1024" />
         </div>
       </div>
@@ -785,6 +790,7 @@
     const appId     = document.getElementById('apmid').value.trim();
     const appName   = document.getElementById('appname').value.trim();
     const appTeam   = document.getElementById('app_team').value.trim();
+    const aysGroup  = document.getElementById('ays_group').value.trim();
     const workspace = document.getElementById('workspace').value;
     const workerGrp = document.getElementById('worker_group').value;
     const region    = document.querySelector('input[name="region"]:checked')?.value || '';
@@ -817,6 +823,7 @@
     else if (!/^\w+$/.test(appName))
                            errors.push('App Name must be a single word using only letters, numbers, and underscores.');
     if (!appTeam)          errors.push('Application Team is required.');
+    if (!aysGroup)         errors.push('AYS Group Name is required.');
     if (!workspace)        errors.push('Select a workspace.');
     if (!workerGrp)        errors.push('Select a worker group.');
     if (!region)           errors.push('Select a region.');
@@ -824,9 +831,13 @@
     if (!logDests.length)  errors.push('Select at least one log destination.');
     if (!logTypes.length)  errors.push('Select at least one log type.');
     if (!tags.length)      errors.push('Add at least one entitlement group.');
+    if (!emailTags.length) errors.push('Add at least one app email.');
     if (elkSelected) {
       if (!dailyLogSize)   errors.push('Daily Log Volume is required when ELK is selected.');
       if (!epsVal)          errors.push('Events Per Second (EPS) is required when ELK is selected.');
+      if (!retDays)         errors.push('Retention (days) is required when ELK is selected.');
+      if (!peakEps)         errors.push('Peak EPS is required when ELK is selected.');
+      if (!avgEvtSize)      errors.push('Avg Event Size is required when ELK is selected.');
     }
 
     const errorBox  = document.getElementById('error-box');
@@ -853,6 +864,7 @@
         apmid: appId,
         appname: appName,
         app_team: appTeam,
+        ays_group: aysGroup,
         app_emails: emailTags,
         workspace: workspace,
         worker_group: workerGrp,
@@ -919,6 +931,7 @@
     document.getElementById('apmid').value     = '';
     document.getElementById('appname').value   = '';
     document.getElementById('app_team').value  = '';
+    document.getElementById('ays_group').value = '';
     document.getElementById('ilm_tier').value  = 'none';
     document.getElementById('data_type').value = '';
     emailTags.length = 0;
