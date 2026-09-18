@@ -1,0 +1,56 @@
+{{- if .Values.tests.enabled }}
+{{- $checks := list }}
+{{- if .Values.framework.enabled }}
+{{- $checks = append $checks (printf "http://%s-cribl-framework:%d/cribl/health" .Release.Name (int .Values.framework.service.port)) }}
+{{- end }}
+{{- if .Values.criblService.enabled }}
+{{- $checks = append $checks (printf "http://%s-cribl-service:8001/health" .Release.Name) }}
+{{- end }}
+{{- if .Values.eceService.enabled }}
+{{- $checks = append $checks (printf "http://%s-ece-service:8002/health" .Release.Name) }}
+{{- end }}
+{{- if .Values.etnOnboarding.enabled }}
+{{- $checks = append $checks (printf "http://%s-etn-onboarding:5000/health" .Release.Name) }}
+{{- end }}
+{{- if $checks }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-cribl-framework-test
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "cribl-framework-test") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  {{- include "cf.podCommon" . | nindent 2 }}
+  containers:
+    - name: healthcheck
+      image: {{ include "cf.image" (dict "image" .Values.framework.image) | quote }}
+      imagePullPolicy: {{ .Values.framework.image.pullPolicy | default .Values.global.imagePullPolicy }}
+      securityContext:
+        {{- toYaml .Values.global.containerSecurityContext | nindent 8 }}
+      command:
+        - python
+        - -c
+        - |
+          import urllib.request, sys
+          failed = False
+          for url in {{ $checks | toJson }}:
+              try:
+                  with urllib.request.urlopen(url, timeout=10) as resp:
+                      print(f"OK  {url} -> {resp.status}")
+              except Exception as exc:
+                  print(f"ERR {url} -> {exc}")
+                  failed = True
+          sys.exit(1 if failed else 0)
+      resources:
+        limits:
+          cpu: 100m
+          memory: 128Mi
+        requests:
+          cpu: 50m
+          memory: 64Mi
+{{- end }}
+{{- end }}

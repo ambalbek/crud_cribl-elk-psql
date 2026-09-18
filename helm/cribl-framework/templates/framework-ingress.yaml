@@ -1,0 +1,31 @@
+{{- if and .Values.framework.enabled .Values.framework.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-cribl-framework
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "cribl-framework") | nindent 4 }}
+  {{- with .Values.framework.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.framework.ingress.className }}
+  ingressClassName: {{ .Values.framework.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ required "framework.ingress.host is required when ingress is enabled" .Values.framework.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-cribl-framework
+                port:
+                  name: http
+  {{- with .Values.framework.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

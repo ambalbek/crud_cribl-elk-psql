@@ -1,0 +1,20 @@
+{{- if .Values.criblService.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-cribl-service-env
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "cribl-service") | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.global.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.global.logFormat | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.global.otlpEndpoint | quote }}
+  PYTHONDONTWRITEBYTECODE: "1"
+  CRIBL_BASE_URL: {{ .Values.external.cribl.baseUrl | quote }}
+  CRIBL_SKIP_SSL: {{ .Values.external.cribl.skipSsl | quote }}
+  CRIBL_TIMEOUT: {{ .Values.external.cribl.timeout | quote }}
+  CRIBL_DEFAULT_WORKSPACE: {{ .Values.external.cribl.defaultWorkspace | quote }}
+  CRIBL_DEFAULT_ROUTES_TABLE: {{ .Values.external.cribl.defaultRoutesTable | quote }}
+  CRIBL_MIN_EXISTING_ROUTES: {{ .Values.external.cribl.minExistingRoutes | quote }}
+  CRIBL_SNAPSHOT_DIR: "cribl_snapshots"
+{{- end }}

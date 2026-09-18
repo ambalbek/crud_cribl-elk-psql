@@ -1,0 +1,83 @@
+{{- if .Values.etnOnboarding.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-etn-onboarding
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "etn-onboarding") | nindent 4 }}
+spec:
+  replicas: {{ .Values.etnOnboarding.replicaCount }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "cf.selectorLabels" (dict "root" $ "name" "etn-onboarding") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cf.selectorLabels" (dict "root" $ "name" "etn-onboarding") | nindent 8 }}
+        {{- with .Values.etnOnboarding.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/etn-onboarding-configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/etn-onboarding-secret.yaml") . | sha256sum }}
+        {{- with .Values.etnOnboarding.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "cf.podCommon" . | nindent 6 }}
+      {{- include "cf.podScheduling" (dict "comp" .Values.etnOnboarding) | nindent 6 }}
+      containers:
+        - name: etn-onboarding
+          image: {{ include "cf.image" (dict "image" .Values.etnOnboarding.image) | quote }}
+          imagePullPolicy: {{ .Values.etnOnboarding.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          {{- if .Values.etnOnboarding.migrationJob.enabled }}
+          # Migrations run in the pre-install/pre-upgrade Job — skip the
+          # entrypoint's `flask db upgrade` so replicas never race.
+          command: ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:app"]
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-etn-onboarding-env
+            - secretRef:
+                name: {{ .Values.etnOnboarding.existingSecret | default (printf "%s-etn-onboarding" .Release.Name) }}
+          {{- if .Values.etnOnboarding.extraEnv }}
+          env:
+            {{- include "cf.extraEnv" (dict "extra" .Values.etnOnboarding.extraEnv) | nindent 12 }}
+          {{- end }}
+          # When migrationJob is disabled the entrypoint runs `flask db upgrade`
+          # before gunicorn — the startup probe allows up to 5 minutes for it.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.etnOnboarding.resources | nindent 12 }}
+{{- end }}

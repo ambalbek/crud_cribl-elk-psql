@@ -1,0 +1,20 @@
+{{- if and .Values.criblService.enabled .Values.criblService.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-cribl-service-snapshots
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "cribl-service") | nindent 4 }}
+  annotations:
+    # Keep rollback snapshots when the release is deleted.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.criblService.persistence.size }}
+  {{- if .Values.criblService.persistence.storageClass }}
+  storageClassName: {{ .Values.criblService.persistence.storageClass }}
+  {{- end }}
+{{- end }}

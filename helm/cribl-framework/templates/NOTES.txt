@@ -1,0 +1,74 @@
+{{ .Chart.Name }} {{ .Chart.Version }} deployed as release "{{ .Release.Name }}".
+
+Deployed components:
+{{- if .Values.framework.enabled }}
+  - cribl-framework (portal)   → svc {{ .Release.Name }}-cribl-framework:{{ .Values.framework.service.port }}  ({{ .Values.framework.replicaCount }} replica(s))
+{{- end }}
+{{- if .Values.criblService.enabled }}
+  - cribl_service              → svc {{ .Release.Name }}-cribl-service:8001  ({{ .Values.criblService.replicaCount }} replica(s))
+{{- end }}
+{{- if .Values.eceService.enabled }}
+  - ece_service                → svc {{ .Release.Name }}-ece-service:8002  ({{ .Values.eceService.replicaCount }} replica(s))
+{{- end }}
+{{- if .Values.etnOnboarding.enabled }}
+  - etn_onboarding             → svc {{ .Release.Name }}-etn-onboarding:5000  ({{ .Values.etnOnboarding.replicaCount }} replica(s){{ if .Values.etnOnboarding.migrationJob.enabled }}, migrations via pre-upgrade Job{{ end }})
+{{- end }}
+
+NOT deployed by this chart (external): Cribl Stream, Elasticsearch/Kibana, PostgreSQL.
+
+{{- if eq .Values.framework.secretKey "change-me-in-production" }}
+
+WARNING: framework.secretKey is still the default — set a random value
+(sessions are signed with it).
+{{- end }}
+{{- if eq .Values.framework.etnOnboardingToken "change-me-in-production" }}
+
+WARNING: framework.etnOnboardingToken is still the default — set a random value
+(it authenticates the portal to etn_onboarding).
+{{- end }}
+{{- if eq .Values.etnOnboarding.secretKey "change-me-in-production" }}
+
+WARNING: etnOnboarding.secretKey is still the default — set a random value.
+{{- end }}
+{{- if not .Values.external.cribl.baseUrl }}
+
+WARNING: external.cribl.baseUrl is empty — Cribl provisioning will fail with
+"CRIBL_BASE_URL env var is not set".
+{{- end }}
+{{- if not .Values.external.elasticsearch.datastreamUrl }}
+
+WARNING: external.elasticsearch.datastreamUrl is empty — portal submits and the
+catalog will fail (set it, or configure config.json datastream.elk_url).
+{{- end }}
+{{- if and .Values.etnOnboarding.enabled (not .Values.external.postgres.etnDatabaseUrl) (not .Values.etnOnboarding.existingSecret) }}
+
+WARNING: etnOnboarding is enabled but external.postgres.etnDatabaseUrl is empty —
+the migration Job and etn_onboarding pods will fail (they need a reachable database).
+{{- end }}
+{{- if and .Values.framework.enabled (not .Values.external.postgres.frameworkDatabaseUrl) (not .Values.framework.existingSecret) }}
+
+NOTE: external.postgres.frameworkDatabaseUrl is empty — portal PostgreSQL storage
+is disabled; onboarding requests are stored in Elasticsearch only.
+{{- end }}
+{{- if not .Values.networkPolicy.enabled }}
+
+NOTE: networkPolicy.enabled=false — backend services accept traffic from any pod
+in the namespace. Enable it in production if your CNI enforces NetworkPolicy.
+{{- end }}
+
+Access the portal:
+{{- if and .Values.framework.enabled .Values.framework.route.enabled }}
+  oc get route {{ .Release.Name }}-cribl-framework -n {{ .Release.Namespace }}
+{{- else if and .Values.framework.enabled .Values.framework.ingress.enabled }}
+  https://{{ .Values.framework.ingress.host }}/cribl
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }}-cribl-framework {{ .Values.framework.service.port }}:{{ .Values.framework.service.port }}
+  then open http://127.0.0.1:{{ .Values.framework.service.port }}/cribl
+{{- end }}
+
+Verify the release:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Smoke checks (see docs/RUNBOOK.md §3 — /cribl/health is liveness-only):
+  curl http://<framework>/cribl/health/es       # real Elasticsearch check
+  curl http://<framework>/cribl/api/catalog     # catalog build end-to-end

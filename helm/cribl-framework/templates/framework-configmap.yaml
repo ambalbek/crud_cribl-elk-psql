@@ -1,0 +1,26 @@
+{{- if .Values.framework.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-cribl-framework-env
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "cribl-framework") | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.global.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.global.logFormat | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.global.otlpEndpoint | quote }}
+  PYTHONDONTWRITEBYTECODE: "1"
+  ES_DATASTREAM_URL: {{ .Values.external.elasticsearch.datastreamUrl | quote }}
+  ELK_ES_URL: {{ .Values.external.elasticsearch.elkEsUrl | quote }}
+  ELK_KIBANA_URL: {{ .Values.external.elasticsearch.elkKibanaUrl | quote }}
+  ELK_LOGSTASH_URL: {{ .Values.external.elasticsearch.elkLogstashUrl | quote }}
+  {{- if .Values.criblService.enabled }}
+  CRIBL_SERVICE_URL: {{ include "cf.criblServiceUrl" . | quote }}
+  {{- end }}
+  {{- if .Values.eceService.enabled }}
+  ECE_SERVICE_URL: {{ include "cf.eceServiceUrl" . | quote }}
+  {{- end }}
+  {{- if .Values.etnOnboarding.enabled }}
+  ETN_ONBOARDING_URL: {{ include "cf.etnOnboardingUrl" . | quote }}
+  {{- end }}
+{{- end }}

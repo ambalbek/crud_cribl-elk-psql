@@ -1,0 +1,82 @@
+{{- if .Values.eceService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-ece-service
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "ece-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.eceService.replicaCount }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "cf.selectorLabels" (dict "root" $ "name" "ece-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cf.selectorLabels" (dict "root" $ "name" "ece-service") | nindent 8 }}
+        {{- with .Values.eceService.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/ece-service-configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/ece-service-secret.yaml") . | sha256sum }}
+        {{- with .Values.eceService.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "cf.podCommon" . | nindent 6 }}
+      {{- include "cf.podScheduling" (dict "comp" .Values.eceService) | nindent 6 }}
+      containers:
+        - name: ece-service
+          image: {{ include "cf.image" (dict "image" .Values.eceService.image) | quote }}
+          imagePullPolicy: {{ .Values.eceService.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8002
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-ece-service-env
+            - secretRef:
+                name: {{ .Values.eceService.existingSecret | default (printf "%s-ece-service" .Release.Name) }}
+          {{- if .Values.eceService.extraEnv }}
+          env:
+            {{- include "cf.extraEnv" (dict "extra" .Values.eceService.extraEnv) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: templates-output
+              mountPath: /app/ops_rm_r_templates_output
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.eceService.resources | nindent 12 }}
+      volumes:
+        - name: templates-output
+          emptyDir: {}
+{{- end }}

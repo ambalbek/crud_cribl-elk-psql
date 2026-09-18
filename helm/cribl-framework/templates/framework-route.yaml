@@ -1,0 +1,22 @@
+{{- if and .Values.framework.enabled .Values.framework.route.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Release.Name }}-cribl-framework
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "cribl-framework") | nindent 4 }}
+spec:
+  {{- if .Values.framework.route.host }}
+  host: {{ .Values.framework.route.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Release.Name }}-cribl-framework
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.framework.route.tlsTermination }}
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}

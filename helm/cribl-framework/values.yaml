@@ -1,0 +1,278 @@
+# cribl-framework umbrella chart — application services only.
+#
+# NOT deployed by this chart (external, configure under `external`):
+#   - Cribl Stream leader / Edge
+#   - Elasticsearch / Kibana / APM Server (ELK)
+#   - PostgreSQL
+#
+# Images are the same ones docker-compose.services.yml uses (build & push them
+# to your registry first; set repository to the full registry path).
+
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  logLevel: INFO
+  logFormat: json # "json" enables structured logs with trace/span ids; "text" for plain
+  # OTLP trace endpoint, e.g. http://apm-server.observability.svc:8200
+  # Empty = tracing silently disabled (spans are created but never exported).
+  otlpEndpoint: ""
+  priorityClassName: ""
+  # Applied to every pod. The images have no USER directive, so non-root is
+  # enforced here. On OpenShift (restricted SCC assigns the UID), set
+  # runAsUser/runAsGroup/fsGroup to null.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # Applied to every container.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: false # app dirs receive rendered output; not yet RO-safe
+
+serviceAccount:
+  create: true
+  name: "" # defaults to <release>-cribl-framework
+  annotations: {}
+
+# Restrict pod-to-pod traffic. Backends (cribl_service, ece_service,
+# etn_onboarding) only accept traffic from this release's pods; the portal
+# accepts from anywhere by default (it sits behind a Route/Ingress) unless
+# `portalFrom` narrows it to specific peers.
+networkPolicy:
+  enabled: false
+  # Optional list of NetworkPolicyPeer entries for portal ingress, e.g.
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         kubernetes.io/metadata.name: openshift-ingress
+  portalFrom: []
+
+# Deploy the `helm test` connectivity pod definition.
+tests:
+  enabled: true
+
+external:
+  cribl:
+    # Cribl Stream leader base URL, e.g. https://cribl-leader.example.com:9000
+    baseUrl: ""
+    # Static token takes priority over username/password, but the framework
+    # never refreshes it — prefer username/password (login happens per request).
+    token: ""
+    username: ""
+    password: ""
+    skipSsl: "false"
+    timeout: "30"
+    defaultWorkspace: "default"
+    defaultRoutesTable: "default"
+    # Route-table safety floor; only set to "0" deliberately (see docs/RUNBOOK.md §7)
+    minExistingRoutes: "1"
+
+  elasticsearch:
+    # ES cluster used by the portal for onboarding-request storage & catalog.
+    datastreamUrl: ""
+    datastreamUsername: ""
+    datastreamPassword: ""
+    # URLs probed by GET /cribl/health/elk (leave logstash empty if not deployed;
+    # the composite check will report 503 — expected, see docs/RUNBOOK.md §12).
+    elkEsUrl: ""
+    elkKibanaUrl: ""
+    elkLogstashUrl: ""
+
+  # ece_service targets — role provisioning pushes to BOTH nonprod and prod.
+  ece:
+    esUrl: "" # nonprod
+    esToken: ""
+    esUsername: ""
+    esPassword: ""
+    esUrlProd: ""
+    esTokenProd: ""
+    esUsernameProd: ""
+    esPasswordProd: ""
+    kibanaUrl: ""
+    kibanaToken: ""
+    kibanaUsername: ""
+    kibanaPassword: ""
+    skipSsl: "false"
+
+  postgres:
+    # e.g. postgresql://user:pass@pg.example.com:5432/cribl_framework
+    # Empty = portal PostgreSQL storage disabled (requests go to ES only).
+    frameworkDatabaseUrl: ""
+    # e.g. postgresql://user:pass@pg.example.com:5432/etn_onboarding
+    # REQUIRED when etnOnboarding.enabled — migrations need a reachable database.
+    etnDatabaseUrl: ""
+
+# ── Portal (app.py) ──────────────────────────────────────────────────────────
+framework:
+  enabled: true
+  # NOTE: runs the Flask dev server; keep 1 replica unless you know you need
+  # more (per-process 60s catalog cache; snapshots PVC is RWO — with
+  # persistence enabled the deployment uses the Recreate strategy).
+  replicaCount: 1
+  image:
+    repository: cribl-framework
+    tag: "1.0.0"
+    digest: "" # e.g. sha256:abc… — takes precedence over tag
+    pullPolicy: "" # overrides global.imagePullPolicy
+  service:
+    type: ClusterIP
+    port: 5000
+  # Flask session signing key (SECRET_KEY env; config.json secret_key wins if set there).
+  secretKey: "change-me-in-production"
+  # Must match the token inside etnOnboarding AUTH_LOCAL_USERS (kept in sync
+  # automatically unless etnOnboarding.authLocalUsers is overridden).
+  etnOnboardingToken: "change-me-in-production"
+  # Name of an existing Secret with all framework env vars — replaces the
+  # chart-managed secret entirely when set.
+  existingSecret: ""
+  config:
+    # config.json for app.py, mounted read-only at /app/config.json.
+    # Provide the real file via an existing Secret (key: config.json) …
+    existingSecret: ""
+    # … or inline here (stored in a chart-managed Secret). The default below
+    # only lets the app boot — override it: without auth.local_admins nobody
+    # can perform admin actions, and workspaces/datastream must be filled for
+    # provisioning and the catalog to work. Keep datastream.index explicit
+    # (write/read defaults differ in code — docs/RUNBOOK.md §8).
+    content: |
+      {
+        "auth": { "local_admins": [], "local_users": [], "session_lifetime_minutes": 480 },
+        "workspaces": {},
+        "datastream": { "elk_url": "", "index": "cribl-onboarding-requests", "skip_ssl": false, "timeout": 30 },
+        "entitlement": { "clusters": [], "entitlementFilter": "" }
+      }
+  # Persist /app/cribl_snapshots (route-rollback snapshots written by the
+  # subprocess fallback path). The HTTP path snapshots live in cribl_service.
+  persistence:
+    enabled: false
+    size: 1Gi
+    storageClass: ""
+  extraEnv: {}
+  extraVolumes: []
+  extraVolumeMounts: []
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  resources:
+    limits:
+      cpu: "1"
+      memory: 768Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  # OpenShift Route for the portal (the only externally-exposed service).
+  route:
+    enabled: true
+    host: ""
+    tlsTermination: edge
+  # Vanilla-Kubernetes alternative to the Route.
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    annotations: {}
+    tls: []
+
+# ── Cribl Stream API wrapper (FastAPI, :8001) ────────────────────────────────
+criblService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: cribl-service
+    tag: "1.0.0"
+    digest: ""
+    pullPolicy: ""
+  existingSecret: ""
+  # Persist /app/cribl_snapshots (route-rollback snapshots for the HTTP path).
+  # RWO volume — enabling this forces replicaCount 1 semantics (Recreate strategy);
+  # set replicaCount to 1 yourself to avoid multi-attach errors.
+  persistence:
+    enabled: false
+    size: 1Gi
+    storageClass: ""
+  extraEnv: {}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# ── Elasticsearch/Kibana wrapper (FastAPI, :8002) ────────────────────────────
+eceService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ece-service
+    tag: "1.0.0"
+    digest: ""
+    pullPolicy: ""
+  existingSecret: ""
+  extraEnv: {}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# ── Onboarding state machine (Flask + gunicorn, :5000) ───────────────────────
+etnOnboarding:
+  enabled: true
+  # Safe to scale >1 when migrationJob.enabled (migrations then run once per
+  # release upgrade, not in every pod).
+  replicaCount: 2
+  image:
+    repository: etn-onboarding
+    tag: "1.0.0"
+    digest: ""
+    pullPolicy: ""
+  secretKey: "change-me-in-production"
+  # JSON array for AUTH_LOCAL_USERS. Empty = generated from
+  # framework.etnOnboardingToken so the two sides always match.
+  authLocalUsers: ""
+  etnPortalUrl: ""
+  etnPortalApiKey: ""
+  existingSecret: ""
+  # Run `flask db upgrade` as a pre-install/pre-upgrade Job instead of in every
+  # pod's entrypoint (avoids concurrent-migration races and lets replicas scale).
+  migrationJob:
+    enabled: true
+    backoffLimit: 2
+    activeDeadlineSeconds: 300
+    ttlSecondsAfterFinished: 3600
+  extraEnv: {}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi

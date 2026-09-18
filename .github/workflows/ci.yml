@@ -59,3 +59,5 @@ jobs:
         with:
           version: v3.14.0
       - run: helm lint etn_onboarding/helm/etn-onboarding
+      - run: helm lint --strict helm/cribl-framework
+      - run: helm template ci helm/cribl-framework > /dev/null

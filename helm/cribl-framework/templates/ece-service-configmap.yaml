@@ -1,0 +1,18 @@
+{{- if .Values.eceService.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-ece-service-env
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "ece-service") | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.global.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.global.logFormat | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.global.otlpEndpoint | quote }}
+  PYTHONDONTWRITEBYTECODE: "1"
+  ECE_ES_URL: {{ .Values.external.ece.esUrl | quote }}
+  ECE_ES_URL_PROD: {{ .Values.external.ece.esUrlProd | quote }}
+  ECE_KIBANA_URL: {{ .Values.external.ece.kibanaUrl | quote }}
+  ECE_SKIP_SSL: {{ .Values.external.ece.skipSsl | quote }}
+  ECE_TEMPLATES_DIR: "ops_rm_r_templates_output"
+{{- end }}

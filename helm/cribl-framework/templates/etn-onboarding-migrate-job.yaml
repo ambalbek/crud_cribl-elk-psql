@@ -1,0 +1,54 @@
+{{- if and .Values.etnOnboarding.enabled .Values.etnOnboarding.migrationJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-etn-onboarding-migrate
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "etn-onboarding-migrate") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.etnOnboarding.migrationJob.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.etnOnboarding.migrationJob.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ .Values.etnOnboarding.migrationJob.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "cf.selectorLabels" (dict "root" $ "name" "etn-onboarding-migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "cf.podCommon" . | nindent 6 }}
+      {{- include "cf.podScheduling" (dict "comp" .Values.etnOnboarding) | nindent 6 }}
+      containers:
+        - name: migrate
+          image: {{ include "cf.image" (dict "image" .Values.etnOnboarding.image) | quote }}
+          imagePullPolicy: {{ .Values.etnOnboarding.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          command: ["flask", "--app", "wsgi:app", "db", "upgrade"]
+          # This hook runs BEFORE the release's manifests are applied, so it
+          # cannot envFrom the chart-managed secret on first install — the
+          # database URL is set inline (or from an existing, pre-created secret).
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            {{- if .Values.etnOnboarding.existingSecret }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.etnOnboarding.existingSecret }}
+                  key: DATABASE_URL
+            {{- else }}
+            - name: DATABASE_URL
+              value: {{ .Values.external.postgres.etnDatabaseUrl | quote }}
+            {{- end }}
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+{{- end }}

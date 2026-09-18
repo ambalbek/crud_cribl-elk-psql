@@ -1,0 +1,92 @@
+{{- if .Values.criblService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-cribl-service
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "cribl-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.criblService.replicaCount }}
+  revisionHistoryLimit: 3
+  {{- if .Values.criblService.persistence.enabled }}
+  strategy:
+    type: Recreate
+  {{- else }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "cf.selectorLabels" (dict "root" $ "name" "cribl-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cf.selectorLabels" (dict "root" $ "name" "cribl-service") | nindent 8 }}
+        {{- with .Values.criblService.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/cribl-service-configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/cribl-service-secret.yaml") . | sha256sum }}
+        {{- with .Values.criblService.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "cf.podCommon" . | nindent 6 }}
+      {{- include "cf.podScheduling" (dict "comp" .Values.criblService) | nindent 6 }}
+      containers:
+        - name: cribl-service
+          image: {{ include "cf.image" (dict "image" .Values.criblService.image) | quote }}
+          imagePullPolicy: {{ .Values.criblService.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-cribl-service-env
+            - secretRef:
+                name: {{ .Values.criblService.existingSecret | default (printf "%s-cribl-service" .Release.Name) }}
+          {{- if .Values.criblService.extraEnv }}
+          env:
+            {{- include "cf.extraEnv" (dict "extra" .Values.criblService.extraEnv) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: snapshots
+              mountPath: /app/cribl_snapshots
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.criblService.resources | nindent 12 }}
+      volumes:
+        - name: snapshots
+          {{- if .Values.criblService.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-cribl-service-snapshots
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

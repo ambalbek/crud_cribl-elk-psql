@@ -1,0 +1,24 @@
+{{- if .Values.etnOnboarding.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-etn-onboarding-env
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" "etn-onboarding") | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.global.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.global.logFormat | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.global.otlpEndpoint | quote }}
+  OTEL_SERVICE_NAME: "etn-onboarding"
+  PYTHONDONTWRITEBYTECODE: "1"
+  AUTH_BACKEND: "local"
+  ETN_PORTAL_URL: {{ .Values.etnOnboarding.etnPortalUrl | quote }}
+  CRIBL_BASE_URL: {{ .Values.external.cribl.baseUrl | quote }}
+  ECE_ES_URL: {{ .Values.external.ece.esUrl | quote }}
+  {{- if .Values.criblService.enabled }}
+  CRIBL_SERVICE_URL: {{ include "cf.criblServiceUrl" . | quote }}
+  {{- end }}
+  {{- if .Values.eceService.enabled }}
+  ECE_SERVICE_URL: {{ include "cf.eceServiceUrl" . | quote }}
+  {{- end }}
+{{- end }}

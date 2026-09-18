@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["global", "external", "framework", "criblService", "eceService", "etnOnboarding"],
+  "definitions": {
+    "image": {
+      "type": "object",
+      "required": ["repository", "tag"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" },
+        "pullPolicy": { "type": "string", "enum": ["", "Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "limits": { "type": "object" },
+        "requests": { "type": "object" }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "size": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|k)?$" },
+        "storageClass": { "type": "string" }
+      }
+    },
+    "replicaCount": { "type": "integer", "minimum": 0 }
+  },
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "imagePullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "imagePullSecrets": { "type": "array" },
+        "logLevel": { "type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR"] },
+        "logFormat": { "type": "string", "enum": ["text", "json"] },
+        "otlpEndpoint": { "type": "string" },
+        "priorityClassName": { "type": "string" },
+        "podSecurityContext": { "type": "object" },
+        "containerSecurityContext": { "type": "object" }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "portalFrom": { "type": "array" }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "properties": { "enabled": { "type": "boolean" } }
+    },
+    "external": {
+      "type": "object",
+      "required": ["cribl", "elasticsearch", "ece", "postgres"],
+      "properties": {
+        "cribl": {
+          "type": "object",
+          "properties": {
+            "baseUrl": { "type": "string" },
+            "token": { "type": "string" },
+            "username": { "type": "string" },
+            "password": { "type": "string" },
+            "skipSsl": { "type": "string", "enum": ["true", "false"] },
+            "timeout": { "type": "string", "pattern": "^[0-9]+$" },
+            "minExistingRoutes": { "type": "string", "pattern": "^[0-9]+$" }
+          }
+        },
+        "elasticsearch": { "type": "object" },
+        "ece": { "type": "object" },
+        "postgres": {
+          "type": "object",
+          "properties": {
+            "frameworkDatabaseUrl": { "type": "string", "pattern": "^$|^postgresql(\\+[a-z0-9]+)?://" },
+            "etnDatabaseUrl": { "type": "string", "pattern": "^$|^postgresql(\\+[a-z0-9]+)?://" }
+          }
+        }
+      }
+    },
+    "framework": {
+      "type": "object",
+      "required": ["enabled", "image"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "image": { "$ref": "#/definitions/image" },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "secretKey": { "type": "string" },
+        "etnOnboardingToken": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "config": {
+          "type": "object",
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "content": { "type": "string" }
+          }
+        },
+        "persistence": { "$ref": "#/definitions/persistence" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "route": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "host": { "type": "string" },
+            "tlsTermination": { "type": "string", "enum": ["edge", "passthrough", "reencrypt"] }
+          }
+        },
+        "ingress": { "type": "object" }
+      }
+    },
+    "criblService": {
+      "type": "object",
+      "required": ["enabled", "image"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "image": { "$ref": "#/definitions/image" },
+        "existingSecret": { "type": "string" },
+        "persistence": { "$ref": "#/definitions/persistence" },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    },
+    "eceService": {
+      "type": "object",
+      "required": ["enabled", "image"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "image": { "$ref": "#/definitions/image" },
+        "existingSecret": { "type": "string" },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    },
+    "etnOnboarding": {
+      "type": "object",
+      "required": ["enabled", "image"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "image": { "$ref": "#/definitions/image" },
+        "secretKey": { "type": "string" },
+        "authLocalUsers": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "migrationJob": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "backoffLimit": { "type": "integer", "minimum": 0 },
+            "activeDeadlineSeconds": { "type": "integer", "minimum": 1 },
+            "ttlSecondsAfterFinished": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    }
+  }
+}

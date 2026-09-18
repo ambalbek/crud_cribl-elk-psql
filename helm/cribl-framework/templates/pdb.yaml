@@ -1,0 +1,26 @@
+{{- /*
+One PodDisruptionBudget per component running more than one replica.
+Single-replica components get none — a PDB there would block node drains.
+*/}}
+{{- $components := list
+  (dict "name" "cribl-framework" "enabled" .Values.framework.enabled "replicas" (int .Values.framework.replicaCount))
+  (dict "name" "cribl-service" "enabled" .Values.criblService.enabled "replicas" (int .Values.criblService.replicaCount))
+  (dict "name" "ece-service" "enabled" .Values.eceService.enabled "replicas" (int .Values.eceService.replicaCount))
+  (dict "name" "etn-onboarding" "enabled" .Values.etnOnboarding.enabled "replicas" (int .Values.etnOnboarding.replicaCount))
+}}
+{{- range $c := $components }}
+{{- if and $c.enabled (gt $c.replicas 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $.Release.Name }}-{{ $c.name }}
+  labels:
+    {{- include "cf.labels" (dict "root" $ "name" $c.name) | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "cf.selectorLabels" (dict "root" $ "name" $c.name) | nindent 6 }}
+{{- end }}
+{{- end }}
