@@ -50,7 +50,7 @@ if [[ "${1:-}" == "--load" ]]; then
 
   echo ""
   echo "==> Done. Loaded images:"
-  docker images --format "    {{.Repository}}:{{.Tag}}  ({{.Size}})" | grep -E "cribl-framework|etn-onboarding|cribl-service|ece-service" || true
+  docker images --format "    {{.Repository}}:{{.Tag}}  ({{.Size}})" | grep -E "cribl-framework|etn-onboarding|cribl-service|ece-service|postgres" || true
   exit 0
 fi
 
@@ -83,6 +83,15 @@ for i in "${!NAMES[@]}"; do
   echo "==> Building ${NAMES[$i]}:$TAG ($PLATFORM)"
   eval "${CMDS[$i]}"
   IMAGE_TAGS+=("${NAMES[$i]}:$TAG")
+  echo ""
+done
+
+# ── Pull stock images ───────────────────────────────────────────────────────
+PULL_IMAGES=("postgres:16")
+for img in "${PULL_IMAGES[@]}"; do
+  echo "==> Pulling $img ($PLATFORM)"
+  docker pull --platform "$PLATFORM" "$img"
+  IMAGE_TAGS+=("$img")
   echo ""
 done
 
