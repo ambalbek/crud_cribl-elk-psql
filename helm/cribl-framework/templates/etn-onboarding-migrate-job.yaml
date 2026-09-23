@@ -34,6 +34,14 @@ spec:
           env:
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
+            - name: LOG_LEVEL
+              value: {{ .Values.global.logLevel | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.global.logFormat | quote }}
+            {{- with .Values.global.otlpEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.etnOnboarding.existingSecret }}
             - name: DATABASE_URL
               valueFrom:
@@ -45,10 +53,5 @@ spec:
               value: {{ .Values.external.postgres.etnDatabaseUrl | quote }}
             {{- end }}
           resources:
-            limits:
-              cpu: 500m
-              memory: 256Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
+            {{- toYaml .Values.etnOnboarding.resources | nindent 12 }}
 {{- end }}

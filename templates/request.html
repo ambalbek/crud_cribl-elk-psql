@@ -435,6 +435,7 @@
         </div>
       </div>
 
+      {% if current_role == 'admin' %}
       <div class="form-group">
         <label for="ilm_tier">ILM Tier <span class="required-star">*</span></label>
         <select id="ilm_tier">
@@ -444,6 +445,7 @@
           <option value="cold">cold</option>
         </select>
       </div>
+      {% endif %}
 
       <!-- ── Log Configuration ── -->
       <p class="section-label">Log Configuration</p>
@@ -480,6 +482,13 @@
           </label>
         </div>
         <input type="text" id="log_dest_other" placeholder="Specify other destination" autocomplete="off" style="display:none;margin-top:8px;" />
+      </div>
+
+      <!-- Dynatrace Questionnaire link (shown when Dynatrace is selected) -->
+      <div id="dynatrace-questionnaire-section" style="display:none;">
+        <div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);border-radius:var(--radius);padding:10px 14px;margin-bottom:20px;font-size:.87rem;color:#8b5cf6;">
+          {% if dynatrace_url %}Please complete the Dynatrace questionnaire at <strong><a href="{{ dynatrace_url }}" target="_blank">{{ dynatrace_url }}</a></strong> before proceeding.{% endif %}
+        </div>
       </div>
 
       <!-- ELK Capacity Questionnaire (shown when ELK is selected) -->
@@ -524,19 +533,19 @@
       <div class="form-group">
         <label>Log Type <span class="required-star">*</span></label>
         <div class="region-group" style="flex-wrap:wrap;">
-          <label class="region-option">
+          <label class="region-option" title="Risk &amp; Identity Management — authentication, authorization, and access control logs">
             <input type="checkbox" name="log_type" value="RIM" />
             <span>RIM</span>
           </label>
-          <label class="region-option">
+          <label class="region-option" title="Transactional — payment, transfer, and financial transaction logs">
             <input type="checkbox" name="log_type" value="TRANS" />
             <span>TRANS</span>
           </label>
-          <label class="region-option">
+          <label class="region-option" title="Business — application business logic and operational event logs">
             <input type="checkbox" name="log_type" value="BIZ" />
             <span>BIZ</span>
           </label>
-          <label class="region-option">
+          <label class="region-option" title="Legal Hold — logs retained for regulatory, compliance, or litigation purposes">
             <input type="checkbox" name="log_type" value="LGLHLD" />
             <span>LGLHLD</span>
           </label>
@@ -783,6 +792,13 @@
   // Attach toggle to the ELK checkbox
   document.querySelector('input[name="log_dest"][value="elk"]').addEventListener('change', toggleElkCapacity);
 
+  function toggleDynatraceQuestionnaire() {
+    const dtChecked = document.querySelector('input[name="log_dest"][value="dynatrace"]').checked;
+    document.getElementById('dynatrace-questionnaire-section').style.display = dtChecked ? '' : 'none';
+  }
+  // Attach toggle to the Dynatrace checkbox
+  document.querySelector('input[name="log_dest"][value="dynatrace"]').addEventListener('change', toggleDynatraceQuestionnaire);
+
   function submitForm() {
     const lanId     = document.getElementById('lan_id').value.trim();
     const firstName = document.getElementById('first_name').value.trim();
@@ -794,7 +810,8 @@
     const workspace = document.getElementById('workspace').value;
     const workerGrp = document.getElementById('worker_group').value;
     const region    = document.querySelector('input[name="region"]:checked')?.value || '';
-    const ilmTier   = document.getElementById('ilm_tier').value;
+    const ilmEl     = document.getElementById('ilm_tier');
+    const ilmTier   = ilmEl ? ilmEl.value : 'none';
     const dataType  = document.getElementById('data_type').value;
     const logDests = [...document.querySelectorAll('input[name="log_dest"]:checked')].map(c => {
       if (c.value === 'other') {
@@ -932,7 +949,7 @@
     document.getElementById('appname').value   = '';
     document.getElementById('app_team').value  = '';
     document.getElementById('ays_group').value = '';
-    document.getElementById('ilm_tier').value  = 'none';
+    if (document.getElementById('ilm_tier')) document.getElementById('ilm_tier').value = 'none';
     document.getElementById('data_type').value = '';
     emailTags.length = 0;
     renderEmailTags();

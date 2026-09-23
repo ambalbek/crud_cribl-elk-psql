@@ -59,6 +59,7 @@
   "admin_secret": "lab-admin-secret-not-for-production",
 
   "iiq_url": "https://iiq.example.com/MOYAACESS",
+  "dynatrace_url": "https://dynatrace.example.com/questionnaire",
 
   "datastream": {
     "elk_url":  "http://elasticsearch:9200",

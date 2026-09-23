@@ -6,7 +6,7 @@ services:
     environment:
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      - "127.0.0.1:9200:9200"
+      - "0.0.0.0:9200:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
       - ./elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
@@ -23,7 +23,7 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
-      - "127.0.0.1:5601:5601"
+      - "0.0.0.0:5601:5601"
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -41,7 +41,7 @@ services:
         -E setup.kibana.host=http://kibana:5601
         -E apm-server.secret_token=
     ports:
-      - "127.0.0.1:8200:8200"   # APM / OTLP receiver
+      - "0.0.0.0:8200:8200"   # APM / OTLP receiver
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -60,7 +60,7 @@ services:
     environment:
       - CRIBL_BOOT_START_MODE=managed-edge
     ports:
-      - "127.0.0.1:9420:9420"   # Cribl Edge UI
+      - "0.0.0.0:9420:9420"   # Cribl Edge UI
     volumes:
       - cribl_edge_data:/opt/cribl/state
       - ./cribl-edge/local/cribl/inputs.yml:/opt/cribl/local/cribl/inputs.yml
@@ -73,7 +73,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5000:5000"   # localhost only — use a reverse proxy for external access
+      - "0.0.0.0:5000:5000"   # localhost only — use a reverse proxy for external access
     volumes:
       - ./config.json:/app/config.json:ro          # secrets never in image
       - ./cribl_snapshots:/app/cribl_snapshots     # persist snapshots across restarts
@@ -109,7 +109,7 @@ services:
       context: ./etn_onboarding
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5001:5000"
+      - "0.0.0.0:5001:5000"
     depends_on:
       etn_postgres:
         condition: service_healthy
@@ -135,7 +135,7 @@ services:
     image: postgres:16
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5433:5432"
+      - "0.0.0.0:5433:5432"
     environment:
       POSTGRES_USER: etn_user
       POSTGRES_PASSWORD: etn_pass
@@ -155,7 +155,7 @@ services:
       dockerfile: cribl_service/Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8001:8001"                # internal only; cribl-framework reaches it via service name
+      - "0.0.0.0:8001:8001"                # internal only; cribl-framework reaches it via service name
     env_file:
       - cribl_service/.env
     environment:
@@ -186,7 +186,7 @@ services:
       dockerfile: ece_service/Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8002:8002"                # internal only
+      - "0.0.0.0:8002:8002"                # internal only
     volumes:
       - ./ops_rm_r_templates_output:/app/ops_rm_r_templates_output  # ELK template output
     env_file:

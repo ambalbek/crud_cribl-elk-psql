@@ -824,6 +824,7 @@ def portal_index():
     return render_template(
         "request.html",
         iiq_url=config.get("iiq_url", ""),
+        dynatrace_url=config.get("dynatrace_url", ""),
         workspaces=workspaces,
         config=config,
     )

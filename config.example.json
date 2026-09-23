@@ -110,6 +110,7 @@
   "admin_secret": "CHANGE_ME_TO_A_STRONG_RANDOM_STRING",
 
   "iiq_url": "https://iiq.company.com/MOYAACESS",
+  "dynatrace_url": "https://dynatrace.company.com/questionnaire",
 
   "datastream": {
     "_comment": "Elasticsearch datastream where onboarding requests are stored and status is updated.",

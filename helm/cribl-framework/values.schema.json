@@ -29,7 +29,19 @@
         "storageClass": { "type": "string" }
       }
     },
-    "replicaCount": { "type": "integer", "minimum": 0 }
+    "replicaCount": { "type": "integer", "minimum": 0 },
+    "schedulingFields": {
+      "type": "object",
+      "properties": {
+        "extraEnv": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "podLabels": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "topologySpreadConstraints": { "type": "array" }
+      }
+    }
   },
   "properties": {
     "global": {
@@ -57,7 +69,7 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "portalFrom": { "type": "array" }
+        "portalFrom": { "type": "array", "items": { "type": "object" } }
       }
     },
     "tests": {
@@ -77,11 +89,40 @@
             "password": { "type": "string" },
             "skipSsl": { "type": "string", "enum": ["true", "false"] },
             "timeout": { "type": "string", "pattern": "^[0-9]+$" },
+            "defaultWorkspace": { "type": "string" },
+            "defaultRoutesTable": { "type": "string" },
             "minExistingRoutes": { "type": "string", "pattern": "^[0-9]+$" }
           }
         },
-        "elasticsearch": { "type": "object" },
-        "ece": { "type": "object" },
+        "elasticsearch": {
+          "type": "object",
+          "properties": {
+            "datastreamUrl": { "type": "string" },
+            "datastreamUsername": { "type": "string" },
+            "datastreamPassword": { "type": "string" },
+            "elkEsUrl": { "type": "string" },
+            "elkKibanaUrl": { "type": "string" },
+            "elkLogstashUrl": { "type": "string" }
+          }
+        },
+        "ece": {
+          "type": "object",
+          "properties": {
+            "esUrl": { "type": "string" },
+            "esToken": { "type": "string" },
+            "esUsername": { "type": "string" },
+            "esPassword": { "type": "string" },
+            "esUrlProd": { "type": "string" },
+            "esTokenProd": { "type": "string" },
+            "esUsernameProd": { "type": "string" },
+            "esPasswordProd": { "type": "string" },
+            "kibanaUrl": { "type": "string" },
+            "kibanaToken": { "type": "string" },
+            "kibanaUsername": { "type": "string" },
+            "kibanaPassword": { "type": "string" },
+            "skipSsl": { "type": "string", "enum": ["true", "false"] }
+          }
+        },
         "postgres": {
           "type": "object",
           "properties": {
@@ -117,6 +158,15 @@
         },
         "persistence": { "$ref": "#/definitions/persistence" },
         "resources": { "$ref": "#/definitions/resources" },
+        "extraEnv": { "type": "object" },
+        "extraVolumes": { "type": "array" },
+        "extraVolumeMounts": { "type": "array" },
+        "podAnnotations": { "type": "object" },
+        "podLabels": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "topologySpreadConstraints": { "type": "array" },
         "route": {
           "type": "object",
           "properties": {
@@ -125,7 +175,16 @@
             "tlsTermination": { "type": "string", "enum": ["edge", "passthrough", "reencrypt"] }
           }
         },
-        "ingress": { "type": "object" }
+        "ingress": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "className": { "type": "string" },
+            "host": { "type": "string" },
+            "annotations": { "type": "object" },
+            "tls": { "type": "array" }
+          }
+        }
       }
     },
     "criblService": {
@@ -137,7 +196,14 @@
         "image": { "$ref": "#/definitions/image" },
         "existingSecret": { "type": "string" },
         "persistence": { "$ref": "#/definitions/persistence" },
-        "resources": { "$ref": "#/definitions/resources" }
+        "resources": { "$ref": "#/definitions/resources" },
+        "extraEnv": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "podLabels": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "topologySpreadConstraints": { "type": "array" }
       }
     },
     "eceService": {
@@ -148,7 +214,14 @@
         "replicaCount": { "$ref": "#/definitions/replicaCount" },
         "image": { "$ref": "#/definitions/image" },
         "existingSecret": { "type": "string" },
-        "resources": { "$ref": "#/definitions/resources" }
+        "resources": { "$ref": "#/definitions/resources" },
+        "extraEnv": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "podLabels": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "topologySpreadConstraints": { "type": "array" }
       }
     },
     "etnOnboarding": {
@@ -160,6 +233,8 @@
         "image": { "$ref": "#/definitions/image" },
         "secretKey": { "type": "string" },
         "authLocalUsers": { "type": "string" },
+        "etnPortalUrl": { "type": "string" },
+        "etnPortalApiKey": { "type": "string" },
         "existingSecret": { "type": "string" },
         "migrationJob": {
           "type": "object",
@@ -170,7 +245,14 @@
             "ttlSecondsAfterFinished": { "type": "integer", "minimum": 0 }
           }
         },
-        "resources": { "$ref": "#/definitions/resources" }
+        "resources": { "$ref": "#/definitions/resources" },
+        "extraEnv": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "podLabels": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "topologySpreadConstraints": { "type": "array" }
       }
     }
   }

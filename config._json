@@ -110,6 +110,7 @@
   "admin_secret": "CHANGE_ME_TO_A_STRONG_RANDOM_STRING",
 
   "iiq_url": "https://iiq.company.com/MOYAACESS",
+  "dynatrace_url": "https://dynatrace.company.com/questionnaire",
 
   "database": {
     "_comment": "PostgreSQL connection for persisting onboarding requests.",

@@ -5,7 +5,7 @@ Deployed components:
   - cribl-framework (portal)   → svc {{ .Release.Name }}-cribl-framework:{{ .Values.framework.service.port }}  ({{ .Values.framework.replicaCount }} replica(s))
 {{- end }}
 {{- if .Values.criblService.enabled }}
-  - cribl_service              → svc {{ .Release.Name }}-cribl-service:8001  ({{ .Values.criblService.replicaCount }} replica(s))
+  - cribl_service              → svc {{ .Release.Name }}-cribl-service:8001   ({{ .Values.criblService.replicaCount }} replica(s))
 {{- end }}
 {{- if .Values.eceService.enabled }}
   - ece_service                → svc {{ .Release.Name }}-ece-service:8002  ({{ .Values.eceService.replicaCount }} replica(s))

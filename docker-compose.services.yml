@@ -8,8 +8,8 @@ services:
     environment:
       - CRIBL_BOOT_START_MODE=managed-edge
     ports:
-      - "127.0.0.1:4317:4317"   # OTLP gRPC
-      - "127.0.0.1:4318:4318"   # OTLP HTTP
+      - "0.0.0.0:4317:4317"   # OTLP gRPC
+      - "0.0.0.0:4318:4318"   # OTLP HTTP
       - "0.0.0.0:9420:9420"     # Cribl Edge UI
     volumes:
       - cribl_edge_data:/opt/cribl/state
@@ -47,7 +47,7 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8001:8001"
+      - "0.0.0.0:8001:8001"
     env_file:
       - cribl_service/.env
     environment:
@@ -77,7 +77,7 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8002:8002"
+      - "0.0.0.0:8002:8002"
     volumes:
       - ./ops_rm_r_templates_output:/app/ops_rm_r_templates_output
     env_file:

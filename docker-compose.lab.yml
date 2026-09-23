@@ -24,7 +24,7 @@ services:
       POSTGRES_USER: cribl
       POSTGRES_PASSWORD: cribl
     ports:
-      - "127.0.0.1:5432:5432"
+      - "0.0.0.0:5432:5432"
     volumes:
       - lab_pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -41,7 +41,7 @@ services:
     environment:
       - CRIBL_DIST_MODE=master
     ports:
-      - "127.0.0.1:9000:9000"
+      - "0.0.0.0:9000:9000"
     volumes:
       - lab_cribl_data:/opt/cribl/state
     healthcheck:
@@ -63,7 +63,7 @@ services:
       - ELASTIC_PASSWORD=changeme
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      - "127.0.0.1:9200:9200"
+      - "0.0.0.0:9200:9200"
     volumes:
       - lab_es_data:/usr/share/elasticsearch/data
       - ./elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
@@ -95,7 +95,7 @@ services:
       - XPACK_SECURITY_ENCRYPTIONKEY=e28e928cae761da121919351042ee770
       - XPACK_REPORTING_ENCRYPTIONKEY=16da1090c0454e5047cb1b559912c2d3
     ports:
-      - "127.0.0.1:5601:5601"
+      - "0.0.0.0:5601:5601"
     depends_on:
       es-init:
         condition: service_completed_successfully
@@ -107,8 +107,8 @@ services:
     volumes:
       - ./otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:4318:4318"
+      - "0.0.0.0:4317:4317"
+      - "0.0.0.0:4318:4318"
     depends_on:
       elasticsearch:
         condition: service_healthy

@@ -26,9 +26,16 @@ spec:
   restartPolicy: Never
   {{- include "cf.podCommon" . | nindent 2 }}
   containers:
+    {{- /* Pick the first enabled component's image so the test works even when framework.enabled=false */ -}}
+    {{- $testImage := dict "repository" "python" "tag" "3.12-slim" "digest" "" }}
+    {{- if .Values.framework.enabled }}
+      {{- $testImage = .Values.framework.image }}
+    {{- else if .Values.etnOnboarding.enabled }}
+      {{- $testImage = .Values.etnOnboarding.image }}
+    {{- end }}
     - name: healthcheck
-      image: {{ include "cf.image" (dict "image" .Values.framework.image) | quote }}
-      imagePullPolicy: {{ .Values.framework.image.pullPolicy | default .Values.global.imagePullPolicy }}
+      image: {{ include "cf.image" (dict "image" $testImage) | quote }}
+      imagePullPolicy: {{ $testImage.pullPolicy | default .Values.global.imagePullPolicy }}
       securityContext:
         {{- toYaml .Values.global.containerSecurityContext | nindent 8 }}
       command:
