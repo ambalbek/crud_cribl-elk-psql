@@ -229,6 +229,21 @@ if _db_url:
     migrate = Migrate(app, db)
     with app.app_context():
         db.create_all()
+        # Auto-add any missing columns so the model stays in sync with the DB
+        from sqlalchemy import inspect as sa_inspect, text
+        inspector = sa_inspect(db.engine)
+        for table_name, model in db.Model.metadata.tables.items():
+            if not inspector.has_table(table_name):
+                continue
+            existing = {col["name"] for col in inspector.get_columns(table_name)}
+            for col in model.columns:
+                if col.name not in existing:
+                    col_type = col.type.compile(db.engine.dialect)
+                    db.session.execute(text(
+                        f'ALTER TABLE {table_name} ADD COLUMN "{col.name}" {col_type}'
+                    ))
+                    log.info("Auto-added missing column %s.%s (%s)", table_name, col.name, col_type)
+        db.session.commit()
     log.info("PostgreSQL connected — %s", _db_url.split("@")[-1])  # log host only, no creds
 else:
     log.warning("DATABASE_URL not set — PostgreSQL storage disabled; requests will only go to ES")
@@ -540,7 +555,8 @@ def _svc_patch(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
         raise RuntimeError("Service URL is not configured")
     url = base_url + path
     extra_hdrs = kwargs.pop("headers", None)
-    resp = http_client.patch(url, timeout=120, headers=extra_hdrs, **kwargs)
+    verify = kwargs.pop("verify", True)
+    resp = http_client.patch(url, timeout=120, headers=extra_hdrs, verify=verify, **kwargs)
     try:
         body = resp.json()
     except (ValueError, TypeError):
@@ -590,8 +606,30 @@ def _cribl_base_and_headers(
     if resolved_token:
         headers["Authorization"] = f"Bearer {resolved_token}"
     elif resolved_user and resolved_pass:
-        b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
-        headers["Authorization"] = f"Basic {b64}"
+        # Cribl requires a bearer token — exchange username/password via login API
+        try:
+            login_resp = http_client.post(
+                f"{base_url}/api/v1/auth/login",
+                json={"username": resolved_user, "password": resolved_pass},
+                timeout=10,
+                verify=True,
+            )
+            if login_resp.status_code < 400:
+                bearer_token = login_resp.json().get("token", "")
+                if bearer_token:
+                    headers["Authorization"] = f"Bearer {bearer_token}"
+                else:
+                    log.warning("Cribl login returned no token, falling back to Basic auth")
+                    b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
+                    headers["Authorization"] = f"Basic {b64}"
+            else:
+                log.warning("Cribl login failed (%d), falling back to Basic auth", login_resp.status_code)
+                b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
+                headers["Authorization"] = f"Basic {b64}"
+        except Exception as exc:
+            log.warning("Cribl login error (%s), falling back to Basic auth", exc)
+            b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
+            headers["Authorization"] = f"Basic {b64}"
 
     return base_url, headers
 
@@ -1704,6 +1742,8 @@ def patch_destination():
         worker_group, destination_id, list(patch_fields.keys()),
     )
 
+    skip_ssl = bool(data.get("skip_ssl"))
+
     try:
         base, hdrs = _cribl_base_and_headers(
             cribl_url=data.get("cribl_url", ""),
@@ -1716,6 +1756,7 @@ def patch_destination():
             f"/api/v1/m/{worker_group}/destinations/{destination_id}",
             json=patch_fields,
             headers=hdrs,
+            verify=not skip_ssl,
         )
     except Exception as exc:
         log.error("patch-destination failed: %s", exc)
@@ -1771,6 +1812,8 @@ def bulk_patch_destinations():
     filter_prefix = (data.get("filter_prefix") or "").strip()
     explicit_ids = data.get("destination_ids") or []
 
+    skip_ssl = bool(data.get("skip_ssl"))
+
     errors = []
     if not worker_group:
         errors.append("Worker group is required.")
@@ -1795,6 +1838,7 @@ def bulk_patch_destinations():
             base,
             f"/api/v1/m/{worker_group}/destinations",
             headers=hdrs,
+            verify=not skip_ssl,
         )
     except Exception as exc:
         log.error("bulk-patch list failed: %s", exc)
@@ -1828,6 +1872,7 @@ def bulk_patch_destinations():
                 f"/api/v1/m/{worker_group}/destinations/{dest_id}",
                 json=patch_fields,
                 headers=hdrs,
+                verify=not skip_ssl,
             )
             results.append({"id": dest_id, "status": st, "ok": st < 400})
         except Exception as exc:
@@ -2398,6 +2443,76 @@ def api_catalog():
     except Exception as exc:
         log.error("api/catalog — build failed:\n%s", traceback.format_exc())
         return jsonify({"errors": [f"Catalog build failed: {exc}"]}), 500
+
+
+@app.route("/cribl/api/onboarding-requests")
+@login_required
+def api_onboarding_requests():
+    """Return all onboarding requests, merging etn_onboarding service + local DB."""
+    results = []
+    seen_apms = set()
+
+    # 1. Fetch from etn_onboarding service (source of truth)
+    if ETN_ONBOARDING_URL:
+        try:
+            headers = {"Content-Type": "application/json"}
+            if ETN_ONBOARDING_TOKEN:
+                headers["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+            resp = http_client.get(
+                f"{ETN_ONBOARDING_URL}/api/requests/",
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code < 400:
+                for r in resp.json():
+                    seen_apms.add(r.get("apm_id"))
+                    form_data = r.get("form_data") or {}
+                    results.append({
+                        "req_id":           r.get("id", ""),
+                        "apm":              r.get("apm_id", ""),
+                        "name":             r.get("app_name", ""),
+                        "status":           r.get("status", ""),
+                        "lan_id":           r.get("lan_id", ""),
+                        "first_name":       r.get("first_name", ""),
+                        "last_name":        r.get("last_name", ""),
+                        "submitted_by":     r.get("requestor_name", ""),
+                        "requestor_email":  r.get("requestor_email", ""),
+                        "team":             r.get("team", ""),
+                        "app_emails":       r.get("app_emails", []),
+                        "ays_group":        form_data.get("ays_group", ""),
+                        "environment":      r.get("environment", ""),
+                        "workspace":        r.get("workspace", ""),
+                        "worker_group":     r.get("worker_group", ""),
+                        "region":           r.get("region", ""),
+                        "data_type":        r.get("data_type", ""),
+                        "log_destinations": r.get("log_destinations", []),
+                        "log_types":        r.get("log_types", []),
+                        "ilm_tier":         r.get("ilm_tier", ""),
+                        "entitlements":     r.get("entitlement_groups", []),
+                        "elk_capacity":     form_data.get("elk_capacity"),
+                        "pack_id":          r.get("pack_id", ""),
+                        "pack_version":     r.get("pack_version", ""),
+                        "storage_container": r.get("storage_container", ""),
+                        "date":             r.get("created_at", ""),
+                        "updated_at":       r.get("updated_at", ""),
+                    })
+            else:
+                log.warning("etn_onboarding /api/requests/ returned %d", resp.status_code)
+        except Exception as exc:
+            log.warning("etn_onboarding requests fetch failed: %s", exc)
+
+    # 2. Also fetch from local DB (legacy records)
+    if _db_url:
+        try:
+            rows = OnboardingRequest.query.order_by(OnboardingRequest.id.desc()).all()
+            for r in rows:
+                if r.apmid not in seen_apms:
+                    d = r.to_dict()
+                    results.append(d)
+        except Exception as exc:
+            log.warning("local DB requests fetch failed: %s", exc)
+
+    return jsonify(results)
 
 
 @app.route("/cribl/api/catalog/<apm_id>", methods=["DELETE"])

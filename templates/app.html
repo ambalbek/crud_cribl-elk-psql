@@ -116,6 +116,16 @@
     .hint { font-size: .82rem; color: var(--muted); margin-bottom: 8px; }
     code { font-family: "Cascadia Code","Fira Code",Consolas,monospace; font-size: .9em; }
 
+    /* ── Table (Tab 4) ── */
+    #t4_table th { padding: 10px 12px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); border-bottom: 2px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+    #t4_table th:hover { color: var(--text); }
+    #t4_table td { padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+    #t4_table tbody tr:hover { background: rgba(255,255,255,.03); }
+    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: .76rem; font-weight: 600; }
+    .status-pending  { background: rgba(245,158,11,.15); color: #fcd34d; }
+    .status-done     { background: rgba(34,197,94,.15);  color: #4ade80; }
+    .status-other    { background: rgba(148,163,184,.15); color: var(--muted); }
+
     /* ── Footer ── */
     footer { text-align: center; padding: 24px; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border); }
   </style>
@@ -140,6 +150,7 @@
   <button class="tab-btn active" onclick="switchTab(event,'tab1')">📡 Cribl Pusher</button>
   <button class="tab-btn"        onclick="switchTab(event,'tab2')">⚡ ELK Roles + Cribl Routes</button>
   <button class="tab-btn"        onclick="switchTab(event,'tab3')">🔧 Destination Patch</button>
+  <button class="tab-btn"        onclick="switchTab(event,'tab4')">🗄️ PostgreSQL Data</button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════
@@ -852,6 +863,12 @@
           </div>
         </details>
 
+        <div class="form-group" style="margin-top:10px;">
+          <div class="check-row">
+            <label><input type="checkbox" id="t3_skip_ssl"> Skip SSL Verification</label>
+          </div>
+        </div>
+
         <button class="btn-primary" id="t3_run_btn" onclick="submitDestPatch()">
           Patch Destination(s)
         </button>
@@ -867,6 +884,35 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     TAB 4 — PostgreSQL Data
+     ════════════════════════════════════════════════════════════ -->
+<div id="tab4" class="tab-content">
+  <div style="width:100%;padding:24px 2rem 48px;">
+
+    <div class="panel" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+      <p class="panel-title" style="margin-bottom:0;border-bottom:none;padding-bottom:0;">Onboarding Requests</p>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <input type="text" id="t4_search" placeholder="Search..." oninput="filterTable()" style="width:220px;">
+        <button class="btn-primary" style="width:auto;padding:8px 18px;" onclick="loadPgTable()">Refresh</button>
+      </div>
+    </div>
+
+    <div id="t4_status"></div>
+
+    <div style="overflow-x:auto;">
+      <table id="t4_table" style="width:100%;border-collapse:collapse;font-size:.84rem;">
+        <thead>
+          <tr id="t4_thead" style="background:var(--surface);text-align:left;"></tr>
+        </thead>
+        <tbody id="t4_tbody"></tbody>
+      </table>
+    </div>
+
+    <p id="t4_empty" class="hint" style="text-align:center;padding:40px 0;display:none;">No data loaded. Click <b>Refresh</b> to fetch from PostgreSQL.</p>
   </div>
 </div>
 
@@ -1296,7 +1342,8 @@ async function submitDestPatch() {
   try {
     let res, data;
 
-    const connInfo = { cribl_url: criblUrl, token, username, password };
+    const skipSsl  = document.getElementById('t3_skip_ssl').checked;
+    const connInfo = { cribl_url: criblUrl, token, username, password, skip_ssl: skipSsl };
 
     if (mode === 'single') {
       const destId = (document.getElementById('t3_dest_id').value || '').trim();
@@ -1344,6 +1391,104 @@ async function submitDestPatch() {
   } finally {
     setLoading('t3_run_btn', 'Patch Destination(s)', false);
   }
+}
+
+// ── Tab 4 — PostgreSQL table ─────────────────────────────────────────────
+let _pgData = [];
+const PG_COLUMNS = [
+  {key:'apm',              label:'APM ID'},
+  {key:'name',             label:'App Name'},
+  {key:'status',           label:'Status'},
+  {key:'lan_id',           label:'LAN ID'},
+  {key:'first_name',       label:'First Name'},
+  {key:'last_name',        label:'Last Name'},
+  {key:'submitted_by',     label:'Submitted By'},
+  {key:'requestor_email',  label:'Requestor Email'},
+  {key:'team',             label:'Team'},
+  {key:'ays_group',        label:'AYS Group'},
+  {key:'app_emails',       label:'App Emails'},
+  {key:'environment',      label:'Environment'},
+  {key:'workspace',        label:'Workspace'},
+  {key:'worker_group',     label:'Worker Group'},
+  {key:'region',           label:'Region'},
+  {key:'data_type',        label:'Data Type'},
+  {key:'log_destinations', label:'Log Destinations'},
+  {key:'log_types',        label:'Log Types'},
+  {key:'ilm_tier',         label:'ILM Tier'},
+  {key:'entitlements',     label:'Entitlements'},
+  {key:'elk_capacity',     label:'ELK Capacity'},
+  {key:'pack_id',          label:'Pack ID'},
+  {key:'pack_version',     label:'Pack Version'},
+  {key:'storage_container',label:'Storage Container'},
+  {key:'date',             label:'Created'},
+  {key:'updated_at',       label:'Updated'},
+];
+
+function renderPgTable(data) {
+  const thead = document.getElementById('t4_thead');
+  const tbody = document.getElementById('t4_tbody');
+  const empty = document.getElementById('t4_empty');
+
+  thead.innerHTML = PG_COLUMNS.map(c => `<th>${esc(c.label)}</th>`).join('');
+  if (data.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = 'No onboarding requests found.';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = data.map(row => {
+    const cells = PG_COLUMNS.map(c => {
+      let val = row[c.key];
+      if (c.key === 'status') {
+        const cls = (val === 'pending' || val === 'intake_pending') ? 'status-pending' : (val === 'done' || val === 'complete') ? 'status-done' : 'status-other';
+        return `<td><span class="status-badge ${cls}">${esc(val || '—')}</span></td>`;
+      }
+      if ((c.key === 'date' || c.key === 'updated_at') && val) {
+        val = val.substring(0, 19).replace('T', ' ');
+      }
+      if (val && typeof val === 'object' && !Array.isArray(val)) val = JSON.stringify(val);
+      if (Array.isArray(val)) val = val.join(', ');
+      if (val == null || val === '') val = '—';
+      return `<td title="${esc(String(val))}">${esc(String(val))}</td>`;
+    });
+    return `<tr>${cells.join('')}</tr>`;
+  }).join('');
+}
+
+async function loadPgTable() {
+  const statusEl = document.getElementById('t4_status');
+  const empty    = document.getElementById('t4_empty');
+  statusEl.innerHTML = '';
+  empty.style.display = 'none';
+  document.getElementById('t4_tbody').innerHTML = '<tr><td colspan="' + PG_COLUMNS.length + '" style="text-align:center;padding:24px;color:var(--muted);">Loading...</td></tr>';
+
+  try {
+    const res  = await fetch('/cribl/api/onboarding-requests');
+    const data = await res.json();
+    if (!res.ok) {
+      statusEl.innerHTML = `<div class="alert alert-error">${esc((data.errors || []).join(', ') || 'Failed to fetch')}</div>`;
+      document.getElementById('t4_tbody').innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    _pgData = data;
+    renderPgTable(data);
+    statusEl.innerHTML = `<div class="alert alert-success">${data.length} record(s) loaded from PostgreSQL.</div>`;
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert-error">Request failed: ${esc(err.message)}</div>`;
+    document.getElementById('t4_tbody').innerHTML = '';
+    empty.style.display = 'block';
+  }
+}
+
+function filterTable() {
+  const q = (document.getElementById('t4_search').value || '').toLowerCase();
+  if (!q) { renderPgTable(_pgData); return; }
+  const filtered = _pgData.filter(row =>
+    PG_COLUMNS.some(c => String(row[c.key] || '').toLowerCase().includes(q))
+  );
+  renderPgTable(filtered);
 }
 
 // ── Init on page load ─────────────────────────────────────────────────────

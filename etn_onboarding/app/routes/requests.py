@@ -12,6 +12,46 @@ logger = logging.getLogger(__name__)
 requests_bp = Blueprint("requests", __name__, url_prefix="/api/requests")
 
 
+@requests_bp.route("/", methods=["GET"])
+@require_role("reader")
+def list_requests():
+    """List all onboarding requests with full metadata."""
+    rows = OnboardingRequest.query.order_by(OnboardingRequest.created_at.desc()).all()
+    return jsonify([
+        {
+            "id": str(r.id),
+            "app_name": r.app_name,
+            "apm_id": r.apm_id,
+            "lan_id": r.lan_id,
+            "first_name": r.first_name,
+            "last_name": r.last_name,
+            "requestor_name": r.requestor_name,
+            "requestor_email": r.requestor_email,
+            "team": r.team,
+            "app_emails": r.app_emails,
+            "environment": r.environment,
+            "workspace": r.workspace,
+            "worker_group": r.worker_group,
+            "region": r.region,
+            "data_type": r.data_type,
+            "log_destinations": r.log_destinations,
+            "log_types": r.log_types,
+            "ilm_tier": r.ilm_tier,
+            "entitlement_groups": r.entitlement_groups,
+            "pack_id": r.pack_id,
+            "pack_version": r.pack_version,
+            "storage_container": r.storage_container,
+            "storage_prefix": r.storage_prefix,
+            "storage_region": r.storage_region,
+            "status": r.status.value,
+            "form_data": r.form_data,
+            "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat(),
+        }
+        for r in rows
+    ]), 200
+
+
 @requests_bp.route("/<uuid:request_id>", methods=["GET"])
 @require_role("reader")
 def get_request(request_id):
