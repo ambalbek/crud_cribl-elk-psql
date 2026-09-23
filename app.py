@@ -569,6 +569,7 @@ def _cribl_base_and_headers(
     token: str = "",
     username: str = "",
     password: str = "",
+    skip_ssl: bool = False,
 ) -> tuple[str, dict]:
     """Return (base_url, headers) for Cribl API calls.
 
@@ -612,7 +613,7 @@ def _cribl_base_and_headers(
                 f"{base_url}/api/v1/auth/login",
                 json={"username": resolved_user, "password": resolved_pass},
                 timeout=10,
-                verify=True,
+                verify=not skip_ssl,
             )
             if login_resp.status_code < 400:
                 bearer_token = login_resp.json().get("token", "")
@@ -1697,17 +1698,20 @@ def run_pusher():
 @admin_required
 def get_destination(worker_group: str, destination_id: str):
     """Fetch a single destination from cribl_service or direct Cribl API."""
+    skip_ssl = request.args.get("skip_ssl", "").lower() in ("1", "true", "yes")
     try:
         base, hdrs = _cribl_base_and_headers(
             cribl_url=request.args.get("cribl_url", ""),
             token=request.args.get("token", ""),
             username=request.args.get("username", ""),
             password=request.args.get("password", ""),
+            skip_ssl=skip_ssl,
         )
         body, status = _svc_get(
             base,
             f"/api/v1/m/{worker_group}/destinations/{destination_id}",
             headers=hdrs,
+            verify=not skip_ssl,
         )
     except Exception as exc:
         log.error("get-destination failed: %s", exc)
@@ -1750,6 +1754,7 @@ def patch_destination():
             token=data.get("token", ""),
             username=data.get("username", ""),
             password=data.get("password", ""),
+            skip_ssl=skip_ssl,
         )
         body, status = _svc_patch(
             base,
@@ -1774,17 +1779,20 @@ def patch_destination():
 @admin_required
 def list_destinations(worker_group: str):
     """List all destinations for a worker group."""
+    skip_ssl = request.args.get("skip_ssl", "").lower() in ("1", "true", "yes")
     try:
         base, hdrs = _cribl_base_and_headers(
             cribl_url=request.args.get("cribl_url", ""),
             token=request.args.get("token", ""),
             username=request.args.get("username", ""),
             password=request.args.get("password", ""),
+            skip_ssl=skip_ssl,
         )
         body, status = _svc_get(
             base,
             f"/api/v1/m/{worker_group}/destinations",
             headers=hdrs,
+            verify=not skip_ssl,
         )
     except Exception as exc:
         log.error("list-destinations failed: %s", exc)
@@ -1828,6 +1836,7 @@ def bulk_patch_destinations():
             token=data.get("token", ""),
             username=data.get("username", ""),
             password=data.get("password", ""),
+            skip_ssl=skip_ssl,
         )
     except Exception as exc:
         return jsonify({"errors": [str(exc)]}), 500

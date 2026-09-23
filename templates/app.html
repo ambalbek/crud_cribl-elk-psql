@@ -1197,6 +1197,7 @@ function _t3ConnParams() {
   if (tok)   params.set('token', tok);
   if (user)  params.set('username', user);
   if (pass_) params.set('password', pass_);
+  if (document.getElementById('t3_skip_ssl').checked) params.set('skip_ssl', '1');
   const qs = params.toString();
   return qs ? '?' + qs : '';
 }
