@@ -7,8 +7,20 @@ services:
     ports:
       - "0.0.0.0:5000:5000"   # localhost only — use a reverse proxy for external access
     volumes:
-      - ./config.json:/app/config.json:ro          # secrets never in image
-      - ./cribl_snapshots:/app/cribl_snapshots     # persist snapshots across restarts
+      - ./config.json:/app/config.json:ro
+      - ./route_template_azn.json:/app/route_template_azn.json:ro
+      - ./route_template_azs.json:/app/route_template_azs.json:ro
+      - ./blob_dest_template_azn_dev.json:/app/blob_dest_template_azn_dev.json:ro
+      - ./blob_dest_template_azn_test.json:/app/blob_dest_template_azn_test.json:ro
+      - ./blob_dest_template_azn_prod.json:/app/blob_dest_template_azn_prod.json:ro
+      - ./blob_dest_template_azs_dev.json:/app/blob_dest_template_azs_dev.json:ro
+      - ./blob_dest_template_azs_test.json:/app/blob_dest_template_azs_test.json:ro
+      - ./blob_dest_template_azs_prod.json:/app/blob_dest_template_azs_prod.json:ro
+      - ./blob_dest_template_lglhld.json:/app/blob_dest_template_lglhld.json:ro
+      - ./elk-role.json:/app/elk-role.json:ro
+      - ./elk-index-template.json:/app/elk-index-template.json:ro
+      - ./pipeline_partition.json:/app/pipeline_partition.json:ro
+      - ./cribl_snapshots:/app/cribl_snapshots
     environment:
       - LOG_LEVEL=INFO
       - LOG_FORMAT=${LOG_FORMAT:-text}
