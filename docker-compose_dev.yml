@@ -2,7 +2,7 @@ services:
   # ── ELK Stack ───────────────────────────────────────────────────────────────
   
   cribl-framework:
-    build: .
+    image: cribl-framework:1.0.0
     restart: unless-stopped
     ports:
       - "0.0.0.0:5000:5000"   # localhost only — use a reverse proxy for external access
@@ -49,8 +49,7 @@ services:
       start_period: 15s
 
   etn_onboarding:
-    build:
-      context: ./etn_onboarding
+    image: etn-onboarding:1.0.0
     restart: unless-stopped
     ports:
       - "0.0.0.0:5001:5000"
@@ -94,9 +93,7 @@ services:
       retries: 5
 
   cribl_service:
-    build:
-      context: .                              # project root — needed to COPY shared .py files
-      dockerfile: cribl_service/Dockerfile
+    image: cribl-service:1.0.0
     restart: unless-stopped
     ports:
       - "0.0.0.0:8001:8001"                # internal only; cribl-framework reaches it via service name
@@ -125,9 +122,7 @@ services:
       start_period: 15s
 
   ece_service:
-    build:
-      context: .                              # project root — needed to COPY role_rm.py + shared .py files
-      dockerfile: ece_service/Dockerfile
+    image: ece-service:1.0.0
     restart: unless-stopped
     ports:
       - "0.0.0.0:8002:8002"                # internal only
