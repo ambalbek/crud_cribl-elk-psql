@@ -15,35 +15,7 @@ branch_labels = None
 depends_on = None
 
 
-def _create_enum_safe(name: str, *values: str) -> None:
-    """Create a PostgreSQL enum type, ignoring if it already exists."""
-    vals = ", ".join(f"'{v}'" for v in values)
-    op.execute(
-        f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({vals});"
-        f" EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
-
-
 def upgrade() -> None:
-    # --- Enum types (idempotent) ---
-    _create_enum_safe("environment_enum", "dev", "stage", "prod")
-    _create_enum_safe(
-        "request_status_enum",
-        "intake_pending",
-        "intake_validated",
-        "engagement",
-        "solutioning",
-        "delivery_collection",
-        "delivery_routing",
-        "delivery_storage",
-        "delivery_complete",
-        "validation",
-        "complete",
-        "cancelled",
-    )
-    _create_enum_safe("job_type_enum", "cribl_edge", "etn_portal", "harness_blob")
-    _create_enum_safe("job_status_enum", "pending", "running", "success", "failed")
-
     # --- onboarding_requests ---
     op.create_table(
         "onboarding_requests",
@@ -55,7 +27,7 @@ def upgrade() -> None:
         sa.Column("team", sa.String(256), nullable=False),
         sa.Column(
             "environment",
-            sa.Enum("dev", "stage", "prod", name="environment_enum", create_type=False),
+            sa.Enum("dev", "stage", "prod", name="environment_enum"),
             nullable=False,
         ),
         sa.Column(
@@ -64,7 +36,7 @@ def upgrade() -> None:
                 "intake_pending", "intake_validated", "engagement", "solutioning",
                 "delivery_collection", "delivery_routing", "delivery_storage",
                 "delivery_complete", "validation", "complete", "cancelled",
-                name="request_status_enum", create_type=False,
+                name="request_status_enum",
             ),
             nullable=False,
             server_default="intake_pending",
@@ -132,12 +104,12 @@ def upgrade() -> None:
         ),
         sa.Column(
             "job_type",
-            sa.Enum("cribl_edge", "etn_portal", "harness_blob", name="job_type_enum", create_type=False),
+            sa.Enum("cribl_edge", "etn_portal", "harness_blob", name="job_type_enum"),
             nullable=False,
         ),
         sa.Column(
             "status",
-            sa.Enum("pending", "running", "success", "failed", name="job_status_enum", create_type=False),
+            sa.Enum("pending", "running", "success", "failed", name="job_status_enum"),
             nullable=False,
             server_default="pending",
         ),

@@ -54,7 +54,7 @@ services:
     ports:
       - "0.0.0.0:5001:5000"
     volumes:
-      - ./etn_onboarding/entrypoint.sh:/app/entrypoint.sh:ro
+      - ./etn_onboarding/migrations/versions/001_initial.py:/app/migrations/versions/001_initial.py:ro
     depends_on:
       etn_postgres:
         condition: service_healthy
