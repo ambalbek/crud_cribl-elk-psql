@@ -53,6 +53,8 @@ services:
     restart: unless-stopped
     ports:
       - "0.0.0.0:5001:5000"
+    volumes:
+      - ./etn_onboarding/entrypoint.sh:/app/entrypoint.sh:ro
     depends_on:
       etn_postgres:
         condition: service_healthy
