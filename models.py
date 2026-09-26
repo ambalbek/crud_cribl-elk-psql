@@ -27,8 +27,7 @@ class OnboardingRequest(db.Model):
     log_destinations = db.Column(db.JSON, nullable=False, default=list)
     log_types = db.Column(db.JSON, nullable=False, default=list)
     entitlement_groups = db.Column(db.JSON, nullable=False, default=list)
-    workspace = db.Column(db.String(100), nullable=True)
-    worker_group = db.Column(db.String(100), nullable=False, default="default")
+    environment = db.Column(db.JSON, nullable=False, default=list)
     data_type = db.Column(db.String(100), nullable=True)
     dest = db.Column(db.String(200), nullable=False, default="")
     ilm_tier = db.Column(db.String(50), nullable=False, default="none")
@@ -56,8 +55,7 @@ class OnboardingRequest(db.Model):
             "log_destinations":   self.log_destinations,
             "log_types":          self.log_types,
             "entitlements":       self.entitlement_groups,
-            "workspace":          self.workspace,
-            "worker_group":       self.worker_group,
+            "environment":        self.environment,
             "data_type":          self.data_type,
             "dest":               self.dest,
             "ilm_tier":           self.ilm_tier,

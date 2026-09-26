@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 intake_bp = Blueprint("intake", __name__, url_prefix="/api/intake")
 
-REQUIRED_FIELDS = {"app_name", "apm_id", "requestor_name", "requestor_email", "team", "environment"}
-VALID_ENVIRONMENTS = {"dev", "stage", "prod"}
+REQUIRED_FIELDS = {"app_name", "apm_id", "requestor_name", "requestor_email", "team", "environments"}
+VALID_ENVIRONMENTS = {"dev", "test", "altprod", "prod"}
 
 
 @intake_bp.route("/", methods=["POST"])
@@ -34,14 +34,17 @@ def submit_request():
     if missing:
         return jsonify({"error": f"Missing required fields: {sorted(missing)}"}), 400
 
-    for field in ("app_emails", "log_destinations", "log_types", "entitlement_groups"):
+    for field in ("environments", "app_emails", "log_destinations", "log_types", "entitlement_groups"):
         val = body.get(field)
         if val is not None and not isinstance(val, list):
             return jsonify({"error": f"{field} must be a list"}), 400
 
-    environment = body["environment"]
-    if environment not in VALID_ENVIRONMENTS:
-        return jsonify({"error": f"Invalid environment '{environment}'. Must be one of {sorted(VALID_ENVIRONMENTS)}"}), 400
+    environments = body["environments"]
+    if not environments:
+        return jsonify({"error": "At least one environment is required"}), 400
+    invalid_envs = set(environments) - VALID_ENVIRONMENTS
+    if invalid_envs:
+        return jsonify({"error": f"Invalid environment(s): {sorted(invalid_envs)}. Must be from {sorted(VALID_ENVIRONMENTS)}"}), 400
 
     # Check for duplicate APM ID
     existing = OnboardingRequest.query.filter_by(apm_id=body["apm_id"]).first()
@@ -51,8 +54,8 @@ def submit_request():
     # All known columns
     known_keys = {
         "app_name", "apm_id", "requestor_name", "requestor_email", "team",
-        "environment", "lan_id", "first_name", "last_name", "app_emails",
-        "workspace", "worker_group", "region", "data_type",
+        "environments", "lan_id", "first_name", "last_name", "app_emails",
+        "region", "data_type",
         "log_destinations", "log_types", "ilm_tier", "entitlement_groups",
     }
     # elk_capacity is intentionally stored in form_data (not a dedicated column)
@@ -67,13 +70,11 @@ def submit_request():
         requestor_name=body["requestor_name"],
         requestor_email=body["requestor_email"],
         team=body["team"],
-        environment=environment,
+        environment=environments,
         lan_id=body.get("lan_id"),
         first_name=body.get("first_name"),
         last_name=body.get("last_name"),
         app_emails=body.get("app_emails", []),
-        workspace=body.get("workspace"),
-        worker_group=body.get("worker_group"),
         region=body.get("region"),
         data_type=body.get("data_type"),
         log_destinations=body.get("log_destinations", []),
@@ -121,7 +122,7 @@ def list_requests():
     Query parameters:
       - status: filter by request status
       - team: filter by team name
-      - environment: filter by environment (dev/stage/prod)
+      - environment: filter by environment (dev/test/altprod/prod)
       - page: page number (default 1)
       - per_page: items per page (default 20, max 100)
     """
@@ -143,7 +144,7 @@ def list_requests():
     if env_filter:
         if env_filter not in VALID_ENVIRONMENTS:
             return jsonify({"error": f"Invalid environment '{env_filter}'"}), 400
-        query = query.filter(OnboardingRequest.environment == env_filter)
+        query = query.filter(OnboardingRequest.environment.contains([env_filter]))
 
     query = query.order_by(OnboardingRequest.created_at.desc())
 
@@ -163,9 +164,7 @@ def list_requests():
             "requestor_email": r.requestor_email,
             "team": r.team,
             "app_emails": r.app_emails,
-            "environment": r.environment,
-            "workspace": r.workspace,
-            "worker_group": r.worker_group,
+            "environments": r.environment,
             "region": r.region,
             "data_type": r.data_type,
             "log_destinations": r.log_destinations,
@@ -205,9 +204,12 @@ def validate_intake(request_id):
     actor = body.get("actor", "system")
 
     # Validate that core fields are non-empty
+    # Map payload field names to model attribute names where they differ
+    _field_to_attr = {"environments": "environment"}
     validation_errors = []
     for field in REQUIRED_FIELDS:
-        value = getattr(onboarding_req, field, None)
+        attr = _field_to_attr.get(field, field)
+        value = getattr(onboarding_req, attr, None)
         if not value:
             validation_errors.append(f"Field '{field}' is empty or missing")
 

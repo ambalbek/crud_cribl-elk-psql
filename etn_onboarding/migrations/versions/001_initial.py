@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("team", sa.String(256), nullable=False),
         sa.Column(
             "environment",
-            sa.Enum("dev", "stage", "prod", name="environment_enum"),
+            sa.Enum("dev", "test", "stage", "prod", name="environment_enum"),
             nullable=False,
         ),
         sa.Column(

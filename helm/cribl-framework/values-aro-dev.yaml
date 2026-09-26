@@ -1,0 +1,89 @@
+# ── ARO Dev Environment Values Override ──────────────────────────────────────
+# Usage:
+#   helm upgrade --install cribl ./helm/cribl-framework \
+#     -f helm/cribl-framework/values-aro-dev.yaml \
+#     -n cribl-framework-dev
+#
+# Replace all <placeholders> before deploying.
+
+global:
+  imagePullPolicy: Always
+  imagePullSecrets:
+    - name: nexus-pull-secret
+  logLevel: INFO
+  logFormat: json
+  otlpEndpoint: ""
+  # OpenShift restricted SCC assigns UIDs — set these to null
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: null
+    runAsGroup: null
+    fsGroup: null
+    seccompProfile:
+      type: RuntimeDefault
+
+# ── Images (Nexus) ───────────────────────────────────────────────────────────
+framework:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/cribl-framework
+    tag: latest
+  secretKey: "<generate-random-32-char-string>"
+  etnOnboardingToken: "<generate-random-32-char-string>"
+  route:
+    enabled: true
+    host: ""   # leave empty for auto-generated, or set: cribl.apps.<aro-domain>
+    tlsTermination: edge
+  ingress:
+    enabled: false
+
+criblService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/cribl-service
+    tag: latest
+
+eceService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/ece-service
+    tag: latest
+
+etnOnboarding:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/etn-onboarding
+    tag: latest
+  secretKey: "<generate-random-32-char-string>"
+  migrationJob:
+    enabled: true
+
+# ── External Services ────────────────────────────────────────────────────────
+external:
+  cribl:
+    baseUrl: "<cribl-stream-url>:9000"
+    username: "<cribl-username>"
+    password: "<cribl-password>"
+    skipSsl: "false"
+
+  elasticsearch:
+    datastreamUrl: "<elasticsearch-url>:9200"
+    datastreamUsername: "<es-username>"
+    datastreamPassword: "<es-password>"
+
+  ece:
+    esUrl: "<es-nonprod-url>"
+    esUsername: "<es-nonprod-user>"
+    esPassword: "<es-nonprod-pass>"
+    skipSsl: "false"
+
+  postgres:
+    frameworkDatabaseUrl: "postgresql://<user>:<pass>@<pg-host>:5432/cribl_framework"
+    etnDatabaseUrl: "postgresql://<user>:<pass>@<pg-host>:5432/etn_onboarding"
+
+networkPolicy:
+  enabled: true

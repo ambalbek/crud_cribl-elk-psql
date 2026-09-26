@@ -432,26 +432,29 @@
         <p class="tag-hint">Press <strong>Enter</strong> or <strong>,</strong> to add each email. Click <strong>×</strong> to remove.</p>
       </div>
 
-      <!-- ── Workspace & Routing ── -->
-      <p class="section-label">Workspace &amp; Routing</p>
+      <!-- ── Environment & Routing ── -->
+      <p class="section-label">Environment &amp; Routing</p>
 
       <div class="form-group">
-        <label for="workspace">Workspace <span class="required-star">*</span></label>
-        <select id="workspace" onchange="onWorkspaceChange()">
-          {% for name, ws in workspaces.items() %}
-          <option value="{{ name }}"
-            data-protected="{{ 'true' if ws.get('require_allow') else 'false' }}">
-            {{ name }}{% if ws.get('description') %} — {{ ws.description }}{% endif %}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="worker_group">Worker Group <span class="required-star">*</span></label>
-        <select id="worker_group">
-          <option value="">— select workspace first —</option>
-        </select>
+        <label>Environment <span class="required-star">*</span></label>
+        <div class="region-group" style="flex-wrap:wrap;">
+          <label class="region-option">
+            <input type="checkbox" name="environment" value="dev" />
+            <span>dev</span>
+          </label>
+          <label class="region-option">
+            <input type="checkbox" name="environment" value="test" />
+            <span>test</span>
+          </label>
+          <label class="region-option">
+            <input type="checkbox" name="environment" value="altprod" />
+            <span>altprod</span>
+          </label>
+          <label class="region-option">
+            <input type="checkbox" name="environment" value="prod" />
+            <span>prod</span>
+          </label>
+        </div>
       </div>
 
       <div class="form-group">
@@ -468,17 +471,6 @@
         </div>
       </div>
 
-      {% if current_role == 'admin' %}
-      <div class="form-group">
-        <label for="ilm_tier">ILM Tier <span class="required-star">*</span></label>
-        <select id="ilm_tier">
-          <option value="none">none</option>
-          <option value="hot">hot</option>
-          <option value="warm">warm</option>
-          <option value="cold">cold</option>
-        </select>
-      </div>
-      {% endif %}
 
       <!-- ── Log Configuration ── -->
       <p class="section-label">Log Configuration</p>
@@ -489,7 +481,7 @@
           <option value="">— select data type —</option>
           <option value="mulesoft">Mulesoft</option>
           <option value="forgerock">ForgeRock</option>
-          <option value="dynatrace">Spring Boot</option>
+          <option value="springboot">Spring Boot</option>
           <option value="dotnet">.NET</option>
           <option value="nodejs">Node.js</option>
           <option value="python">Python</option>
@@ -561,6 +553,26 @@
           <label for="avg_event_size">Avg Event Size (bytes) <span class="required-star">*</span></label>
           <input type="text" id="avg_event_size" placeholder="e.g. 1024" />
         </div>
+
+        <p class="section-label" style="margin-top:20px;">Entitlements</p>
+
+        <div style="background:rgba(14,165,233,.08);border:1px solid rgba(14,165,233,.25);border-radius:var(--radius);padding:10px 14px;margin-bottom:20px;font-size:.87rem;color:var(--accent2);">
+          {% if iiq_url %}Submit your IIQ request at <strong><a href="{{ iiq_url }}" target="_blank">{{ iiq_url }}</a></strong> for all your entitlements{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label>Entitlement Groups <span class="required-star">*</span></label>
+          <div class="tag-input-wrap" id="tag-wrap" onclick="document.getElementById('tag-input').focus()">
+            <input
+              type="text"
+              id="tag-input"
+              class="tag-text-input"
+              placeholder="Type a group name and press Enter or comma"
+              autocomplete="off"
+            />
+          </div>
+          <p class="tag-hint">Press <strong>Enter</strong> or <strong>,</strong> to add each group. Click <strong>×</strong> to remove a group.</p>
+        </div>
       </div>
 
       <div class="form-group">
@@ -574,36 +586,7 @@
             <input type="checkbox" name="log_type" value="TRANS" />
             <span>TRANS</span>
           </label>
-          <label class="region-option" title="Business — application business logic and operational event logs">
-            <input type="checkbox" name="log_type" value="BIZ" />
-            <span>BIZ</span>
-          </label>
-          <label class="region-option" title="Legal Hold — logs retained for regulatory, compliance, or litigation purposes">
-            <input type="checkbox" name="log_type" value="LGLHLD" />
-            <span>LGLHLD</span>
-          </label>
         </div>
-      </div>
-
-      <!-- ── Entitlements ── -->
-      <p class="section-label">Entitlements</p>
-
-      <div style="background:rgba(14,165,233,.08);border:1px solid rgba(14,165,233,.25);border-radius:var(--radius);padding:10px 14px;margin-bottom:20px;font-size:.87rem;color:var(--accent2);">
-        {% if iiq_url %}Submit your IIQ request at <strong><a href="{{ iiq_url }}" target="_blank">{{ iiq_url }}</a></strong> for all your entitlements{% endif %}
-      </div>
-
-      <div class="form-group">
-        <label>Entitlement Groups <span class="required-star">*</span></label>
-        <div class="tag-input-wrap" id="tag-wrap" onclick="document.getElementById('tag-input').focus()">
-          <input
-            type="text"
-            id="tag-input"
-            class="tag-text-input"
-            placeholder="Type a group name and press Enter or comma"
-            autocomplete="off"
-          />
-        </div>
-        <p class="tag-hint">Press <strong>Enter</strong> or <strong>,</strong> to add each group. Click <strong>×</strong> to remove a group.</p>
       </div>
 
       <button class="btn-submit" id="submit-btn" onclick="submitForm()">
@@ -657,25 +640,8 @@
 </footer>
 
 <script>
-  // ── Workspace config from server ────────────────────────────────────────────
-  const WORKSPACES = {{ workspaces | tojson }};
-
-  function onWorkspaceChange() {
-    const wsName = document.getElementById('workspace').value;
-    const wsData = WORKSPACES[wsName] || {};
-    const groups = wsData.worker_groups || [];
-    const wgSelect = document.getElementById('worker_group');
-
-    if (groups.length === 0) {
-      wgSelect.innerHTML = '<option value="">No worker groups defined</option>';
-    } else {
-      wgSelect.innerHTML = groups.map(g => '<option value="' + g + '">' + g + '</option>').join('');
-    }
-  }
-
-  // Populate worker groups on page load + auto-lookup if lanId pre-filled
+  // Auto-lookup if lanId pre-filled
   document.addEventListener('DOMContentLoaded', function() {
-    onWorkspaceChange();
     if (document.getElementById('lan_id').value.trim()) ldapLookup();
   });
 
@@ -861,11 +827,8 @@
     const appName   = document.getElementById('appname').value.trim();
     const appTeam   = document.getElementById('app_team').value.trim();
     const aysGroup  = document.getElementById('ays_group').value.trim();
-    const workspace = document.getElementById('workspace').value;
-    const workerGrp = document.getElementById('worker_group').value;
+    const environments = [...document.querySelectorAll('input[name="environment"]:checked')].map(c => c.value);
     const region    = document.querySelector('input[name="region"]:checked')?.value || '';
-    const ilmEl     = document.getElementById('ilm_tier');
-    const ilmTier   = ilmEl ? ilmEl.value : 'none';
     const dataType  = document.getElementById('data_type').value;
     const logDests = [...document.querySelectorAll('input[name="log_dest"]:checked')].map(c => {
       if (c.value === 'other') {
@@ -895,15 +858,14 @@
                            errors.push('App Name must be a single word using only letters, numbers, and underscores.');
     if (!appTeam)          errors.push('Application Team is required.');
     if (!aysGroup)         errors.push('AYS Group Name is required.');
-    if (!workspace)        errors.push('Select a workspace.');
-    if (!workerGrp)        errors.push('Select a worker group.');
+    if (!environments.length) errors.push('Select at least one environment.');
     if (!region)           errors.push('Select a region.');
     if (!dataType)         errors.push('Select a data type.');
     if (!logDests.length)  errors.push('Select at least one log destination.');
     if (!logTypes.length)  errors.push('Select at least one log type.');
-    if (!tags.length)      errors.push('Add at least one entitlement group.');
     if (!emailTags.length) errors.push('Add at least one app email.');
     if (elkSelected) {
+      if (!tags.length)    errors.push('Add at least one entitlement group.');
       if (!dailyLogSize)   errors.push('Daily Log Volume is required when ELK is selected.');
       if (!epsVal)          errors.push('Events Per Second (EPS) is required when ELK is selected.');
       if (!retDays)         errors.push('Retention (days) is required when ELK is selected.');
@@ -937,10 +899,8 @@
         app_team: appTeam,
         ays_group: aysGroup,
         app_emails: emailTags,
-        workspace: workspace,
-        worker_group: workerGrp,
+        environments: environments,
         region: region,
-        ilm_tier: ilmTier,
         data_type: dataType,
         log_destinations: logDests,
         log_types: logTypes,
@@ -1003,18 +963,16 @@
     document.getElementById('appname').value   = '';
     document.getElementById('app_team').value  = '';
     document.getElementById('ays_group').value = '';
-    if (document.getElementById('ilm_tier')) document.getElementById('ilm_tier').value = 'none';
     document.getElementById('data_type').value = '';
     emailTags.length = 0;
     renderEmailTags();
-    // Reset workspace to first option and refresh worker groups
-    document.getElementById('workspace').selectedIndex = 0;
-    onWorkspaceChange();
+    document.querySelectorAll('input[name="environment"]').forEach(c => c.checked = false);
     document.querySelector('input[name="region"][value="azn"]').checked = true;
     document.querySelectorAll('input[name="log_dest"]').forEach(c => c.checked = false);
     document.getElementById('log_dest_other').value = '';
     document.getElementById('log_dest_other').style.display = 'none';
     document.getElementById('elk-capacity-section').style.display = 'none';
+    document.getElementById('dynatrace-questionnaire-section').style.display = 'none';
     ['daily_log_size', 'eps', 'retention_days', 'peak_eps', 'avg_event_size'].forEach(id => {
       document.getElementById(id).value = '';
     });
@@ -1057,13 +1015,10 @@
     {key:'ays_group',        label:'AYS Group'},
     {key:'app_emails',       label:'App Emails'},
     {key:'environment',      label:'Environment'},
-    {key:'workspace',        label:'Workspace'},
-    {key:'worker_group',     label:'Worker Group'},
     {key:'region',           label:'Region'},
     {key:'data_type',        label:'Data Type'},
     {key:'log_destinations', label:'Log Destinations'},
     {key:'log_types',        label:'Log Types'},
-    {key:'ilm_tier',         label:'ILM Tier'},
     {key:'entitlements',     label:'Entitlements'},
     {key:'elk_capacity',     label:'ELK Capacity'},
     {key:'pack_id',          label:'Pack ID'},

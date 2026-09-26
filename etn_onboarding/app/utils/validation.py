@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import List, Tuple
 
-_VALID_ENVIRONMENTS = {"dev", "stage", "prod"}
+_VALID_ENVIRONMENTS = {"dev", "test", "altprod", "prod"}
 
 _EMAIL_RE = re.compile(
     r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
@@ -16,16 +16,15 @@ _REQUIRED_FIELDS = (
     "requestor_name",
     "requestor_email",
     "team",
-    "environment",
+    "environments",
 )
 
 
-def validate_environment(env: str) -> bool:
-    """Return ``True`` if *env* is a recognised environment name.
-
-    Valid values are ``dev``, ``stage``, and ``prod`` (case-insensitive).
-    """
-    return env.strip().lower() in _VALID_ENVIRONMENTS
+def validate_environments(envs: list) -> bool:
+    """Return ``True`` if every entry in *envs* is a recognised environment name."""
+    if not envs or not isinstance(envs, list):
+        return False
+    return all(e.strip().lower() in _VALID_ENVIRONMENTS for e in envs)
 
 
 def validate_email(email: str) -> bool:
@@ -61,10 +60,10 @@ def validate_onboarding_form(data: dict) -> Tuple[bool, List[str]]:
             errors.append(f"'{field}' is required.")
 
     # --- field-specific validations (only if value is present) ---
-    env = data.get("environment")
-    if env and not validate_environment(env):
+    envs = data.get("environments")
+    if envs and not validate_environments(envs):
         errors.append(
-            f"Invalid environment '{env}'. Must be one of: "
+            f"Invalid environment(s). Each must be one of: "
             f"{', '.join(sorted(_VALID_ENVIRONMENTS))}."
         )
 

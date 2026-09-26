@@ -48,7 +48,6 @@ def _create_enums(db_session) -> None:
     """Create PostgreSQL enum types before db.create_all (models use create_type=False)."""
     from sqlalchemy import text
     enums = [
-        "DO $$ BEGIN CREATE TYPE environment_enum AS ENUM ('dev','stage','prod'); EXCEPTION WHEN duplicate_object THEN NULL; END $$",
         (
             "DO $$ BEGIN CREATE TYPE request_status_enum AS ENUM ("
             "'intake_pending','intake_validated','engagement','solutioning',"
@@ -128,7 +127,7 @@ def sample_request(db) -> OnboardingRequest:
         requestor_name="Test User",
         requestor_email="test@example.com",
         team="platform",
-        environment="dev",
+        environment=["dev"],
         status=RequestStatus.intake_pending,
     )
     db.session.add(req)

@@ -361,7 +361,7 @@
     <div class="app-card">
       <div class="card-icon icon-amber">&#128200;</div>
       <h3>Service Catalog</h3>
-      <p>Live ops dashboard aggregating Cribl routes, ELK roles, ILM tiers, and onboarding status for every app — with offboard actions.</p>
+      <p>Live ops dashboard aggregating Cribl routes, ELK roles, and onboarding status for every app — with offboard actions.</p>
       <a class="launch-btn-blue" href="{{ url_for('catalog_page') }}">Open Catalog</a>
     </div>
     {% if current_role == 'admin' %}
@@ -380,7 +380,7 @@
     <div class="card">
       <div class="card-icon icon-blue">📝</div>
       <h3>Submit Onboarding Requests</h3>
-      <p>Clients fill a form with App ID, App Name, Region, and Entitlement Groups. Requests are indexed in Elasticsearch with a unique Request ID.</p>
+      <p>Clients fill a form with App ID, App Name, Environment, Region, Data Type, Log Destination, and Log Type. Requests are indexed in Elasticsearch with a unique Request ID.</p>
     </div>
     <div class="card">
       <div class="card-icon icon-red">🚀</div>
@@ -503,14 +503,14 @@
       <div class="step-num">2</div>
       <div>
         <h4>Client submits an onboarding request</h4>
-        <p>Open the <strong>Onboarding Portal</strong> — username and name are auto-populated from the SSO session. Fill in App ID, App Name, Region, and Entitlement Groups.</p>
+        <p>Open the <strong>Onboarding Portal</strong> — username and name are auto-populated from the SSO session. Fill in App ID, App Name, Environment, Region, Data Type, Log Destination, and Log Type.</p>
       </div>
     </li>
     <li>
       <div class="step-num">3</div>
       <div>
         <h4>Platform team reviews and processes</h4>
-        <p>Open the <strong>Cribl Pusher</strong> (admin only), select workspace and worker group(s), enter the app details, and run with Dry Run first.</p>
+        <p>Open the <strong>Cribl Pusher</strong> (admin only), select environment and worker group(s), enter the app details, and run with Dry Run first.</p>
       </div>
     </li>
     <li>
@@ -524,7 +524,7 @@
       <div class="step-num">5</div>
       <div>
         <h4>Request status is updated</h4>
-        <p>After successful processing, use the <strong>Admin</strong> panel (admin only) to mark the request as "done".</p>
+        <p>After successful processing, use the <strong>Admin</strong> panel (admin only) to mark the request as "complete".</p>
       </div>
     </li>
     <li>

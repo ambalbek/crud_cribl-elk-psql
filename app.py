@@ -856,15 +856,10 @@ def health():
 @login_required
 def portal_index():
     config = load_config()
-    workspaces = {
-        k: v for k, v in config.get("workspaces", {}).items()
-        if not k.startswith("_")
-    }
     return render_template(
         "request.html",
         iiq_url=config.get("iiq_url", ""),
         dynatrace_url=config.get("dynatrace_url", ""),
-        workspaces=workspaces,
         config=config,
     )
 
@@ -890,9 +885,9 @@ def portal_submit():
     log_dests  = [d for d in (data.get("log_destinations") or []) if d]
     log_types  = [t for t in (data.get("log_types") or []) if t]
     data_type  = (data.get("data_type") or "").strip()
-    groups     = [grp for grp in (data.get("groups") or []) if grp]
-    worker_grp = (data.get("worker_group") or "default").strip()
-    dest       = (data.get("dest") or "").strip()
+    groups       = [grp for grp in (data.get("groups") or []) if grp]
+    environments = [e for e in (data.get("environments") or []) if e]
+    dest         = (data.get("dest") or "").strip()
     ilm_tier   = (data.get("ilm_tier") or "none").strip()
     elk_capacity = data.get("elk_capacity") or {}
 
@@ -909,15 +904,17 @@ def portal_submit():
                                           errors.append("App Name must be a single word using only letters, numbers, and underscores.")
     if not app_team:                      errors.append("Application Team is required.")
     if not ays_group:                     errors.append("AYS Group Name is required.")
+    if not environments:                  errors.append("Select at least one environment.")
     if region not in ("azn", "azs"):      errors.append("Region must be azn or azs.")
     if not log_dests:                     errors.append("Select at least one log destination.")
     if not log_types:                     errors.append("Select at least one log type.")
-    if not groups:                        errors.append("Select at least one entitlement group.")
     if "elk" in log_dests:
         if not elk_capacity.get("daily_log_size"):
             errors.append("Daily Log Volume is required when ELK is selected.")
         if not elk_capacity.get("eps"):
             errors.append("Events Per Second (EPS) is required when ELK is selected.")
+        if not groups:
+            errors.append("Add at least one entitlement group.")
     if errors:
         return jsonify({"errors": errors}), 400
 
@@ -926,13 +923,7 @@ def portal_submit():
     except Exception as exc:
         return jsonify({"errors": [f"Could not load config.json: {exc}"]}), 500
 
-    # ── Forward to etn_onboarding service when configured ────────────────────
-    workspace = (data.get("workspace") or "").strip()
-
     if ETN_ONBOARDING_URL:
-        # Derive environment from workspace name
-        ws_cfg = config.get("workspaces", {}).get(workspace, {})
-        ws_env = "prod" if ws_cfg.get("require_allow") else workspace if workspace in ("dev", "test", "prod") else "dev"
         intake_payload = {
             "app_name":    app_name,
             "apm_id":      app_id,
@@ -940,18 +931,15 @@ def portal_submit():
             "requestor_email": app_emails[0] if app_emails else f"{lan_id}@company.com",
             "team":        app_team,
             "ays_group":   ays_group,
-            "environment": ws_env,
-            # Everything else preserved in form_data
+            "environments": environments,
             "lan_id":             lan_id,
             "first_name":         first_name,
             "last_name":          last_name,
             "region":             region,
-            "workspace":          workspace,
             "data_type":          data_type,
             "log_destinations":   log_dests,
             "log_types":          log_types,
             "entitlement_groups": groups,
-            "worker_group":       worker_grp,
             "dest":               dest,
             "ilm_tier":           ilm_tier,
             "app_emails":         app_emails,
@@ -1002,12 +990,11 @@ def portal_submit():
             "ays_group":          ays_group,
             "app_emails":         app_emails,
             "region":             region,
-            "workspace":          workspace,
+            "environments":       environments,
             "data_type":          data_type,
             "log_destinations":   log_dests,
             "log_types":          log_types,
             "entitlement_groups": groups,
-            "worker_group":       worker_grp,
             "dest":               dest,
             "ilm_tier":           ilm_tier,
             "elk_capacity":       elk_capacity if elk_capacity else None,
@@ -1042,11 +1029,10 @@ def portal_submit():
                     ays_group=ays_group,
                     app_emails=app_emails,
                     region=region,
-                    workspace=workspace,
+                    environment=environments,
                     log_destinations=log_dests,
                     log_types=log_types,
                     entitlement_groups=groups,
-                    worker_group=worker_grp,
                     data_type=data_type,
                     dest=dest,
                     ilm_tier=ilm_tier,
@@ -1076,14 +1062,14 @@ def portal_submit():
         "apmid":              app_id,
         "appname":            app_name,
         "app_team":           app_team,
+        "ays_group":          ays_group,
         "app_emails":         app_emails,
         "region":             region,
-        "workspace":          workspace,
+        "environments":       environments,
         "log_destinations":   log_dests,
         "log_types":          log_types,
         "data_type":          data_type,
         "entitlement_groups": groups,
-        "worker_group":       worker_grp,
         "dest":               dest,
         "ilm_tier":           ilm_tier,
         "elk_capacity":       elk_capacity if elk_capacity else None,
@@ -1107,13 +1093,13 @@ def portal_submit():
                 apmid=app_id,
                 appname=app_name,
                 app_team=app_team,
+                ays_group=ays_group,
                 app_emails=app_emails,
                 region=region,
-                workspace=workspace,
+                environment=environments,
                 log_destinations=log_dests,
                 log_types=log_types,
                 entitlement_groups=groups,
-                worker_group=worker_grp,
                 data_type=data_type,
                 dest=dest,
                 ilm_tier=ilm_tier,
@@ -2489,9 +2475,7 @@ def api_onboarding_requests():
                         "team":             r.get("team", ""),
                         "app_emails":       r.get("app_emails", []),
                         "ays_group":        form_data.get("ays_group", ""),
-                        "environment":      r.get("environment", ""),
-                        "workspace":        r.get("workspace", ""),
-                        "worker_group":     r.get("worker_group", ""),
+                        "environment":      r.get("environments", []),
                         "region":           r.get("region", ""),
                         "data_type":        r.get("data_type", ""),
                         "log_destinations": r.get("log_destinations", []),

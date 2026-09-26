@@ -667,13 +667,14 @@
 
         {% set cribl_urls = config.get('cribl_urls', []) %}
         <div class="form-group">
-          <label for="t3_cribl_url">Cribl URL <span style="font-weight:400">(optional — overrides config.json)</span></label>
+          <label for="t3_cribl_url">Cribl URL <span style="font-weight:400">(leave default to route via cribl_service)</span></label>
           {% if cribl_urls %}
             <select id="t3_cribl_url">
-              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              <option value="">— via cribl_service (default) —</option>
+              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }} (direct)</option>{% endfor %}
             </select>
           {% else %}
-            <input type="text" id="t3_cribl_url" placeholder="leave blank to use config.json">
+            <input type="text" id="t3_cribl_url" placeholder="leave blank to route via cribl_service">
           {% endif %}
         </div>
 
@@ -778,6 +779,17 @@
             <button class="btn-primary" style="background:var(--accent2);width:auto;padding:8px 16px;font-size:.85rem;" onclick="previewBulkTargets()">
               Preview Matching Destinations
             </button>
+          </div>
+
+          <div id="t3_bulk_preview_wrap" class="hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span id="t3_bulk_count" style="font-size:.84rem;color:var(--muted);"></span>
+              <div style="display:flex;gap:8px;">
+                <button type="button" style="background:none;border:1px solid var(--border);color:var(--accent2);border-radius:var(--radius);padding:4px 12px;font-size:.8rem;cursor:pointer;" onclick="toggleAllBulkDests(true)">Select All</button>
+                <button type="button" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:var(--radius);padding:4px 12px;font-size:.8rem;cursor:pointer;" onclick="toggleAllBulkDests(false)">Deselect All</button>
+              </div>
+            </div>
+            <div id="t3_bulk_list" class="wg-list" style="max-height:240px;"></div>
           </div>
           <pre id="t3_bulk_preview" class="output-pre" style="min-height:60px;max-height:200px;font-size:.78rem;"># Click "Preview" to see which destinations will be patched...</pre>
         </div>
@@ -1234,16 +1246,26 @@ function onPatchModeChange() {
 }
 
 // ── Preview bulk targets ──────────────────────────────────────────────
+let _bulkPreviewItems = [];
+
 async function previewBulkTargets() {
-  const wg  = document.getElementById('t3_worker_group').value;
-  const pre = document.getElementById('t3_bulk_preview');
+  const wg   = document.getElementById('t3_worker_group').value;
+  const pre  = document.getElementById('t3_bulk_preview');
+  const wrap = document.getElementById('t3_bulk_preview_wrap');
+  const list = document.getElementById('t3_bulk_list');
+
+  wrap.classList.add('hidden');
+  _bulkPreviewItems = [];
 
   if (!wg) {
     pre.textContent = '# Please select a worker group first.';
+    pre.classList.remove('hidden');
     return;
   }
 
   pre.textContent = 'Fetching destinations...';
+  pre.classList.remove('hidden');
+
   try {
     const res  = await fetch(`/cribl/api/destinations/${wg}${_t3ConnParams()}`);
     const data = await res.json();
@@ -1258,17 +1280,32 @@ async function previewBulkTargets() {
     const filterPrefix = document.getElementById('t3_filter_prefix').value.trim();
 
     if (filterType)   items = items.filter(d => d.type === filterType);
-    if (filterPrefix)  items = items.filter(d => (d.id || '').startsWith(filterPrefix));
+    if (filterPrefix) items = items.filter(d => (d.id || '').startsWith(filterPrefix));
 
     if (items.length === 0) {
       pre.textContent = '# No destinations match the current filters.';
-    } else {
-      const lines = items.map(d => `${d.id}  (type: ${d.type || '?'})`);
-      pre.textContent = `# ${items.length} destination(s) will be patched:\n` + lines.join('\n');
+      return;
     }
+
+    // Hide the text preview, show the checkbox list
+    pre.classList.add('hidden');
+    _bulkPreviewItems = items;
+
+    list.innerHTML = items.map(d =>
+      `<label><input type="checkbox" name="t3_bulk_dest" value="${esc(d.id)}" checked> ` +
+      `<span style="font-family:monospace;">${esc(d.id)}</span>` +
+      `<span style="color:var(--muted);margin-left:8px;font-size:.78rem;">(${esc(d.type || '?')})</span></label>`
+    ).join('');
+
+    document.getElementById('t3_bulk_count').textContent = `${items.length} destination(s) found — select the ones to patch:`;
+    wrap.classList.remove('hidden');
   } catch (err) {
     pre.textContent = `# Request failed: ${err.message}`;
   }
+}
+
+function toggleAllBulkDests(checked) {
+  document.querySelectorAll('input[name="t3_bulk_dest"]').forEach(cb => cb.checked = checked);
 }
 
 // ── Gather patch fields from form ─────────────────────────────────────
@@ -1359,16 +1396,19 @@ async function submitDestPatch() {
         }),
       });
     } else {
-      const filterType   = document.getElementById('t3_filter_type').value;
-      const filterPrefix = document.getElementById('t3_filter_prefix').value.trim();
+      const selectedIds = [...document.querySelectorAll('input[name="t3_bulk_dest"]:checked')].map(cb => cb.value);
+      if (selectedIds.length === 0) {
+        statusEl.innerHTML = '<div class="alert alert-error">No destinations selected. Run Preview first and select at least one.</div>';
+        setLoading('t3_run_btn', 'Patch Destination(s)', false);
+        return;
+      }
       res = await fetch('/cribl/api/bulk-patch-destinations', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          worker_group:   wg,
-          patch_fields:   patchFields,
-          filter_type:    filterType   || undefined,
-          filter_prefix:  filterPrefix || undefined,
+          worker_group:    wg,
+          patch_fields:    patchFields,
+          destination_ids: selectedIds,
           ...connInfo,
         }),
       });
@@ -1397,6 +1437,7 @@ async function submitDestPatch() {
 // ── Tab 4 — PostgreSQL table ─────────────────────────────────────────────
 let _pgData = [];
 const PG_COLUMNS = [
+  {key:'req_id',           label:'Request ID'},
   {key:'apm',              label:'APM ID'},
   {key:'name',             label:'App Name'},
   {key:'status',           label:'Status'},
@@ -1405,17 +1446,16 @@ const PG_COLUMNS = [
   {key:'last_name',        label:'Last Name'},
   {key:'submitted_by',     label:'Submitted By'},
   {key:'requestor_email',  label:'Requestor Email'},
+  {key:'app_team',         label:'App Team'},
   {key:'team',             label:'Team'},
   {key:'ays_group',        label:'AYS Group'},
   {key:'app_emails',       label:'App Emails'},
   {key:'environment',      label:'Environment'},
-  {key:'workspace',        label:'Workspace'},
-  {key:'worker_group',     label:'Worker Group'},
   {key:'region',           label:'Region'},
   {key:'data_type',        label:'Data Type'},
+  {key:'dest',             label:'Destination'},
   {key:'log_destinations', label:'Log Destinations'},
   {key:'log_types',        label:'Log Types'},
-  {key:'ilm_tier',         label:'ILM Tier'},
   {key:'entitlements',     label:'Entitlements'},
   {key:'elk_capacity',     label:'ELK Capacity'},
   {key:'pack_id',          label:'Pack ID'},

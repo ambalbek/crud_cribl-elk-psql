@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Enum, String, DateTime
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB, ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.extensions import db
@@ -52,13 +52,8 @@ class OnboardingRequest(db.Model):
     team = db.Column(String(256), nullable=False)
     app_emails = db.Column(JSONB, nullable=True, default=list)
 
-    # ── Workspace & routing ──────────────────────────────────────
-    environment = db.Column(
-        Enum("dev", "stage", "prod", name="environment_enum", create_type=False),
-        nullable=False,
-    )
-    workspace = db.Column(String(64), nullable=True)
-    worker_group = db.Column(String(128), nullable=True)
+    # ── Environment & routing ────────────────────────────────────
+    environment = db.Column(JSONB, nullable=False, default=list)
     region = db.Column(String(16), nullable=True)
 
     # ── Log configuration ────────────────────────────────────────
