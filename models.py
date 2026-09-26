@@ -48,7 +48,7 @@ class OnboardingRequest(db.Model):
             "submitted_by":       self.requester_name,
             "apm":                self.apmid,
             "name":               self.appname,
-            "app_team":           self.app_team,
+            "team":               self.app_team,
             "ays_group":          self.ays_group,
             "app_emails":         self.app_emails,
             "region":             self.region,

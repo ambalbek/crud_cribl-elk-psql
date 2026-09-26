@@ -48,8 +48,6 @@ services:
     restart: unless-stopped
     ports:
       - "0.0.0.0:8001:8001"
-    env_file:
-      - cribl_service/.env
     environment:
       - LOG_LEVEL=INFO
       - LOG_FORMAT=${LOG_FORMAT:-text}
@@ -80,8 +78,6 @@ services:
       - "0.0.0.0:8002:8002"
     volumes:
       - ./ops_rm_r_templates_output:/app/ops_rm_r_templates_output
-    env_file:
-      - ece_service/.env
     environment:
       - LOG_LEVEL=INFO
       - LOG_FORMAT=${LOG_FORMAT:-text}

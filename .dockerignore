@@ -1,0 +1,42 @@
+# Build artifacts and runtime data
+image-pack/
+cribl_snapshots/
+ops_rm_r_templates_output/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Service directories not needed by root Dockerfile
+etn_onboarding/
+untracked_apmids/
+
+# Docs and config templates
+docs/
+documentations/
+helm/
+lab/
+*.md
+config._json
+.env*
+*.example
+
+# Python artifacts
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Data volumes
+etn_pgdata/
+es_data/
