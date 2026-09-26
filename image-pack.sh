@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ─────────────────────────────────────────────────────────────────────────────
+# image-pack.sh — Build, save, split, and load Docker images for air-gapped
+#                 or offline environments.
+#
+# Usage:
+#   bash image-pack.sh                              # build+pack using docker-compose_dev.yml
+#   bash image-pack.sh -f docker-compose.yml         # build+pack using a specific compose file
+#   bash image-pack.sh --load                        # reassemble and load images on target machine
+#
+# Steps (build mode):
+#   1. Builds all 4 app images (cribl-framework, etn-onboarding, cribl-service, ece-service)
+#   2. Pulls stock images (postgres:16, cribl/cribl:latest)
+#   3. Saves all images into a single tar
+#   4. Splits the tar into 25MB chunks for easy transfer
+#
+# Steps (load mode):
+#   1. Reassembles the split parts into a single tar
+#   2. Loads all images into Docker
+#   3. Cleans up the tar file
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── Config ───────────────────────────────────────────────────────────────────
 COMPOSE_FILE="docker-compose_dev.yml"
 PLATFORM="linux/amd64"
@@ -12,15 +33,36 @@ TAR_FILE="$OUT_DIR/cribl-images-$TAG.tar"
 # ── Usage ────────────────────────────────────────────────────────────────────
 usage() {
   echo "Usage:"
-  echo "  bash image-pack.sh          Build, save, and split images"
-  echo "  bash image-pack.sh --load   Reassemble and load images"
+  echo "  bash image-pack.sh                        Build, save, and split images (default: docker-compose_dev.yml)"
+  echo "  bash image-pack.sh -f <compose-file>      Build using a specific compose file"
+  echo "  bash image-pack.sh --load                 Reassemble and load images"
   exit 1
 }
+
+# ── Parse args ───────────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -f|--file)
+      COMPOSE_FILE="$2"
+      shift 2
+      ;;
+    --load)
+      LOAD_MODE=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  --load: reassemble split parts and load into Docker
 # ═══════════════════════════════════════════════════════════════════════════════
-if [[ "${1:-}" == "--load" ]]; then
+if [[ "${LOAD_MODE:-}" == "1" ]]; then
   PARTS=("${TAR_FILE}".part*)
 
   if [[ ${#PARTS[@]} -eq 0 || ! -f "${PARTS[0]}" ]]; then
@@ -50,17 +92,13 @@ if [[ "${1:-}" == "--load" ]]; then
 
   echo ""
   echo "==> Done. Loaded images:"
-  docker images --format "    {{.Repository}}:{{.Tag}}  ({{.Size}})" | grep -E "cribl-framework|etn-onboarding|cribl-service|ece-service|postgres" || true
+  docker images --format "    {{.Repository}}:{{.Tag}}  ({{.Size}})" | grep -E "cribl-framework|etn-onboarding|cribl-service|ece-service|postgres|cribl/cribl" || true
   exit 0
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Default: build, save, split
 # ═══════════════════════════════════════════════════════════════════════════════
-if [[ "${1:-}" != "" ]]; then
-  usage
-fi
-
 if [[ ! -f "$COMPOSE_FILE" ]]; then
   echo "ERROR: $COMPOSE_FILE not found in $(pwd)"
   exit 1
@@ -87,7 +125,8 @@ for i in "${!NAMES[@]}"; do
 done
 
 # ── Pull stock images ───────────────────────────────────────────────────────
-PULL_IMAGES=("postgres:16")
+# Stock images
+PULL_IMAGES=("postgres:16-alpine")
 for img in "${PULL_IMAGES[@]}"; do
   echo "==> Pulling $img ($PLATFORM)"
   docker pull --platform "$PLATFORM" "$img"

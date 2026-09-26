@@ -79,7 +79,7 @@ services:
       start_period: 15s
 
   etn_postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     restart: unless-stopped
     ports:
       - "0.0.0.0:5433:5432"
