@@ -1,0 +1,37 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: cribl-framework
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: cribl-framework
+spec:
+  to:
+    kind: Service
+    name: cribl-framework
+    weight: 100
+  port:
+    targetPort: 5000
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: etn-onboarding
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: etn-onboarding
+spec:
+  to:
+    kind: Service
+    name: etn-onboarding
+    weight: 100
+  port:
+    targetPort: 5000
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

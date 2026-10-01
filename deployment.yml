@@ -1,0 +1,90 @@
+deployment:
+  # appType: python-multi-jobs for multi-service Python application
+  appType: python-multi-jobs
+
+  # Application ID — must have an active application defined in Sightline
+  appId: appXXXXXXXX
+
+  # OpenShift namespace/project name
+  namespace: appXXXXXXXX-cribl-elk-psql
+
+  # ── Service definitions ──────────────────────────────────────────────────────
+  services:
+    # 1. cribl-framework — main orchestration API (port 5000)
+    - serviceName: cribl-framework
+      port: 5000
+      replicas: 1
+      healthCheck: /cribl/health
+      env:
+        - name: LOG_LEVEL
+          value: INFO
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: cribl-elk-psql-secrets
+              key: database-url
+        - name: CRIBL_SERVICE_URL
+          value: http://cribl-service:8001
+        - name: ECE_SERVICE_URL
+          value: http://ece-service:8002
+        - name: ETN_ONBOARDING_URL
+          value: http://etn-onboarding:5000
+
+    # 2. cribl-service — Cribl Stream API proxy (port 8001)
+    - serviceName: cribl-service
+      port: 8001
+      replicas: 1
+      healthCheck: /health
+      env:
+        - name: LOG_LEVEL
+          value: INFO
+        - name: CRIBL_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: cribl-elk-psql-secrets
+              key: cribl-base-url
+        - name: CRIBL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: cribl-elk-psql-secrets
+              key: cribl-token
+
+    # 3. ece-service — Elasticsearch/Kibana API proxy (port 8002)
+    - serviceName: ece-service
+      port: 8002
+      replicas: 1
+      healthCheck: /health
+      env:
+        - name: LOG_LEVEL
+          value: INFO
+        - name: ECE_ES_URL
+          valueFrom:
+            secretKeyRef:
+              name: cribl-elk-psql-secrets
+              key: ece-es-url
+        - name: ECE_ES_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: cribl-elk-psql-secrets
+              key: ece-es-token
+
+    # 4. etn-onboarding — onboarding state machine (port 5000)
+    - serviceName: etn-onboarding
+      port: 5000
+      replicas: 1
+      healthCheck: /health
+      env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: cribl-elk-psql-secrets
+              key: etn-database-url
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: cribl-elk-psql-secrets
+              key: secret-key
+        - name: CRIBL_SERVICE_URL
+          value: http://cribl-service:8001
+        - name: ECE_SERVICE_URL
+          value: http://ece-service:8002

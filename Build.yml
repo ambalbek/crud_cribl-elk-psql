@@ -1,0 +1,83 @@
+BuildTool: Python
+JavaVersion: ""
+VersionFilePath: ""
+
+BuildScripts:
+  - ls -la
+  - ls -la scripts/
+  - chmod +x ./scripts/build-project.sh && ./scripts/build-project.sh
+
+PushToUCD: true
+DeployUCD:
+  AutoDeploy: false
+ApplicationName: Cribl_ELK_PSQL
+
+Artifacts:
+  # Artifact 1 — cribl-framework (main orchestration API)
+  - Artifact:
+      Component: cribl-framework-build-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: cribl-framework
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+  # Artifact 2 — cribl-framework deploy
+  - Artifact:
+      Component: cribl-framework-deploy-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: cribl-framework
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+  # Artifact 3 — cribl-service (Cribl API proxy)
+  - Artifact:
+      Component: cribl-service-build-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: cribl-service
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+  # Artifact 4 — cribl-service deploy
+  - Artifact:
+      Component: cribl-service-deploy-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: cribl-service
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+  # Artifact 5 — ece-service (Elasticsearch/Kibana proxy)
+  - Artifact:
+      Component: ece-service-build-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: ece-service
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+  # Artifact 6 — ece-service deploy
+  - Artifact:
+      Component: ece-service-deploy-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: ece-service
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+  # Artifact 7 — etn-onboarding (onboarding state machine)
+  - Artifact:
+      Component: etn-onboarding-build-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: etn-onboarding
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+  # Artifact 8 — etn-onboarding deploy
+  - Artifact:
+      Component: etn-onboarding-deploy-aro
+      GroupID: com.hcsc.digital.cribl-elk-psql
+      ArtifactID: etn-onboarding
+      VersionID: 1.0.0-SNAPSHOT
+      PackagingID: zip
+
+# Code Signing
+SignCode:
+  ApplicationName: appXXXXXXXX_Prod
+  Label: appXXXXXXXX_Prod

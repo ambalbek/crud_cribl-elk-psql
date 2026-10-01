@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cribl-service
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: cribl-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: cribl-service
+  template:
+    metadata:
+      labels:
+        app: cribl-elk-psql
+        component: cribl-service
+    spec:
+      containers:
+        - name: cribl-service
+          image: nexus.XXXXXXXX.com:8083/cribl-service:latest
+          ports:
+            - containerPort: 8001
+              protocol: TCP
+          env:
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: cribl-elk-psql-config
+                  key: log-level
+            - name: LOG_FORMAT
+              valueFrom:
+                configMapKeyRef:
+                  name: cribl-elk-psql-config
+                  key: log-format
+            - name: CRIBL_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: cribl-base-url
+            - name: CRIBL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: cribl-token
+            - name: CRIBL_SKIP_SSL
+              value: "false"
+            - name: CRIBL_TIMEOUT
+              value: "30"
+            - name: CRIBL_DEFAULT_WORKSPACE
+              value: "default"
+            - name: CRIBL_DEFAULT_ROUTES_TABLE
+              value: "default"
+            - name: CRIBL_MIN_EXISTING_ROUTES
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

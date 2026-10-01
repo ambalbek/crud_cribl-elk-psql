@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cribl-framework
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: cribl-framework
+spec:
+  selector:
+    component: cribl-framework
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cribl-service
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: cribl-service
+spec:
+  selector:
+    component: cribl-service
+  ports:
+    - port: 8001
+      targetPort: 8001
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ece-service
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: ece-service
+spec:
+  selector:
+    component: ece-service
+  ports:
+    - port: 8002
+      targetPort: 8002
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: etn-onboarding
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: etn-onboarding
+spec:
+  selector:
+    component: etn-onboarding
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+  type: ClusterIP

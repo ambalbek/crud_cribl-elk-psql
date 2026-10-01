@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cribl-elk-psql-config
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+data:
+  log-level: "INFO"
+  log-format: "text"

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etn-onboarding
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: etn-onboarding
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: etn-onboarding
+  template:
+    metadata:
+      labels:
+        app: cribl-elk-psql
+        component: etn-onboarding
+    spec:
+      containers:
+        - name: etn-onboarding
+          image: nexus.XXXXXXXX.com:8083/etn-onboarding:latest
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: etn-database-url
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: secret-key
+            - name: AUTH_BACKEND
+              value: "local"
+            - name: CRIBL_SERVICE_URL
+              value: "http://cribl-service:8001"
+            - name: ECE_SERVICE_URL
+              value: "http://ece-service:8002"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

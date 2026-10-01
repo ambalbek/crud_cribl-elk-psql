@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cribl-framework
+  namespace: appXXXXXXXX-cribl-elk-psql
+  labels:
+    app: cribl-elk-psql
+    component: cribl-framework
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: cribl-framework
+  template:
+    metadata:
+      labels:
+        app: cribl-elk-psql
+        component: cribl-framework
+    spec:
+      containers:
+        - name: cribl-framework
+          image: nexus.XXXXXXXX.com:8083/cribl-framework:latest
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          env:
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: cribl-elk-psql-config
+                  key: log-level
+            - name: LOG_FORMAT
+              valueFrom:
+                configMapKeyRef:
+                  name: cribl-elk-psql-config
+                  key: log-format
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: database-url
+            - name: CRIBL_SERVICE_URL
+              value: "http://cribl-service:8001"
+            - name: ECE_SERVICE_URL
+              value: "http://ece-service:8002"
+            - name: ETN_ONBOARDING_URL
+              value: "http://etn-onboarding:5000"
+            - name: ETN_ONBOARDING_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: secret-key
+          readinessProbe:
+            httpGet:
+              path: /cribl/health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /cribl/health
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
