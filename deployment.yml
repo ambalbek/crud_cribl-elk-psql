@@ -1,16 +1,9 @@
 deployment:
-  # appType: python-multi-jobs for multi-service Python application
   appType: python-multi-jobs
-
-  # Application ID — must have an active application defined in Sightline
   appId: appXXXXXXXX
-
-  # OpenShift namespace/project name
   namespace: appXXXXXXXX-cribl-elk-psql
 
-  # ── Service definitions ──────────────────────────────────────────────────────
   services:
-    # 1. cribl-framework — main orchestration API (port 5000)
     - serviceName: cribl-framework
       port: 5000
       replicas: 1
@@ -30,7 +23,6 @@ deployment:
         - name: ETN_ONBOARDING_URL
           value: http://etn-onboarding:5000
 
-    # 2. cribl-service — Cribl Stream API proxy (port 8001)
     - serviceName: cribl-service
       port: 8001
       replicas: 1
@@ -49,7 +41,6 @@ deployment:
               name: cribl-elk-psql-secrets
               key: cribl-token
 
-    # 3. ece-service — Elasticsearch/Kibana API proxy (port 8002)
     - serviceName: ece-service
       port: 8002
       replicas: 1
@@ -68,7 +59,6 @@ deployment:
               name: cribl-elk-psql-secrets
               key: ece-es-token
 
-    # 4. etn-onboarding — onboarding state machine (port 5000)
     - serviceName: etn-onboarding
       port: 5000
       replicas: 1

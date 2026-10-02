@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature-*]
   pull_request:
     branches: [main]
 
@@ -50,6 +50,48 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: pytest -v --tb=short
+
+  validate-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Validate deployment.yml (multi-service)
+        run: |
+          python -c "
+          import yaml, sys
+
+          with open('deployment.yml') as f:
+              config = yaml.safe_load(f)
+
+          dep = config.get('deployment', {})
+          required_top = ['appType', 'appId', 'namespace']
+          for key in required_top:
+              if key not in dep:
+                  print(f'ERROR: missing top-level key: {key}')
+                  sys.exit(1)
+
+          services = dep.get('services', [])
+          if not services:
+              # fallback: single-service format
+              if 'serviceName' not in dep:
+                  print('ERROR: no services list and no serviceName found')
+                  sys.exit(1)
+              services = [dep]
+
+          required_svc = ['serviceName', 'port', 'healthCheck']
+          for i, svc in enumerate(services):
+              for key in required_svc:
+                  if key not in svc:
+                      print(f'ERROR: service {i} missing key: {key}')
+                      sys.exit(1)
+              print(f'  OK: {svc[\"serviceName\"]} (port {svc[\"port\"]}, health: {svc[\"healthCheck\"]})')
+
+          print(f'Validated {len(services)} service(s)')
+          "
 
   helm-lint:
     runs-on: ubuntu-latest
