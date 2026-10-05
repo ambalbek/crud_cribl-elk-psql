@@ -476,12 +476,26 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
 def _resolve_entitlement_clusters(ent_cfg: dict) -> list[dict]:
     """Return the entitlement cluster list with env var overrides.
 
-    If ENT_ES_URL is set, it is prepended as a cluster entry (or overrides the
-    first cluster's credentials). This lets K8s inject credentials via Secrets
-    without baking them into config.json.
+    Resolution order (first non-empty wins):
+    1. ENT_ES_CLUSTERS env var — a JSON array of cluster objects. Use this when
+       you have multiple clusters and want all credentials in a K8s Secret.
+    2. ENT_ES_URL env var — a single cluster shorthand (ENT_ES_URL, ENT_ES_USERNAME,
+       ENT_ES_PASSWORD, ENT_ES_TOKEN, ENT_ES_NAME).
+    3. config.json entitlement.clusters — fallback.
     """
+    # Option 1: full JSON array from env
+    env_json = os.environ.get("ENT_ES_CLUSTERS", "").strip()
+    if env_json:
+        try:
+            parsed = json.loads(env_json)
+            if isinstance(parsed, list) and parsed:
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            log.warning("ENT_ES_CLUSTERS env var is not valid JSON — falling back")
+
+    # Option 2: single cluster from env
     clusters = list(ent_cfg.get("clusters", []))
-    env_url  = os.environ.get("ENT_ES_URL", "").strip()
+    env_url = os.environ.get("ENT_ES_URL", "").strip()
     if env_url:
         env_cluster = {
             "name":     os.environ.get("ENT_ES_NAME", "default").strip(),

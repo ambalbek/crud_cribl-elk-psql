@@ -34,22 +34,62 @@ spec:
                 configMapKeyRef:
                   name: cribl-elk-psql-config
                   key: log-format
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: secret-key
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: cribl-elk-psql-secrets
                   key: database-url
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: admin-username
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: admin-password
+            - name: ES_DATASTREAM_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: es-datastream-url
+            - name: ES_DATASTREAM_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: es-datastream-username
+            - name: ES_DATASTREAM_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: es-datastream-password
+            - name: ENT_ES_CLUSTERS
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: ent-es-clusters
+            - name: ETN_ONBOARDING_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: etn-onboarding-token
             - name: CRIBL_SERVICE_URL
               value: "http://cribl-service:8001"
             - name: ECE_SERVICE_URL
               value: "http://ece-service:8002"
             - name: ETN_ONBOARDING_URL
               value: "http://etn-onboarding:5000"
-            - name: ETN_ONBOARDING_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: cribl-elk-psql-secrets
-                  key: secret-key
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /cribl/health
@@ -71,3 +111,7 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: app-config
+          configMap:
+            name: cribl-framework-appconfig

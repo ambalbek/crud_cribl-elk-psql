@@ -53,21 +53,11 @@ deployment:
         secretKeyRef:
           name: cribl-elk-psql-secrets
           key: es-datastream-password
-    - name: ENT_ES_URL
+    - name: ENT_ES_CLUSTERS
       valueFrom:
         secretKeyRef:
           name: cribl-elk-psql-secrets
-          key: ent-es-url
-    - name: ENT_ES_USERNAME
-      valueFrom:
-        secretKeyRef:
-          name: cribl-elk-psql-secrets
-          key: ent-es-username
-    - name: ENT_ES_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: cribl-elk-psql-secrets
-          key: ent-es-password
+          key: ent-es-clusters
     - name: CRIBL_SERVICE_URL
       value: http://cribl-service:8001
     - name: ECE_SERVICE_URL
