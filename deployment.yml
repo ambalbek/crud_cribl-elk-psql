@@ -8,6 +8,15 @@ deployment:
       port: 5000
       replicas: 1
       healthCheck: /cribl/health
+      volumes:
+        - name: config-volume
+          configMap:
+            name: cribl-config
+      volumeMounts:
+        - name: config-volume
+          mountPath: /app/config.json
+          subPath: config.json
+          readOnly: true
       env:
         - name: LOG_LEVEL
           value: INFO

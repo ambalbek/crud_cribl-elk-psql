@@ -23,6 +23,8 @@ helm/
 lab/
 *.md
 config._json
+config.json
+config.sanitized.json
 .env*
 *.example
 

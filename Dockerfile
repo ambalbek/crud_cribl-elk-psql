@@ -15,8 +15,10 @@ COPY *.py ./
 COPY *.json ./
 COPY templates/ templates/
 
-# config.json is NOT baked in — mount at runtime:
-#   -v ./config.json:/app/config.json:ro
+# config.json is NOT baked in (excluded via .dockerignore).
+# In K8s: mount via ConfigMap (cribl-config) at /app/config.json
+# Locally: -v ./config.json:/app/config.json:ro
+# Secrets are injected via env vars (see deployment.yml).
 
 EXPOSE 5000
 
