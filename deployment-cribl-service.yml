@@ -1,0 +1,21 @@
+deployment:
+  appType: python-multi-jobs
+  appId: appXXXXXXXX
+  namespace: appXXXXXXXX-cribl-elk-psql
+  serviceName: cribl-service
+  port: 8001
+  replicas: 1
+  healthCheck: /health
+  env:
+    - name: LOG_LEVEL
+      value: INFO
+    - name: CRIBL_BASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: cribl-base-url
+    - name: CRIBL_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: cribl-token

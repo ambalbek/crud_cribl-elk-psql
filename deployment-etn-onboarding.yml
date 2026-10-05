@@ -1,0 +1,23 @@
+deployment:
+  appType: python-multi-jobs
+  appId: appXXXXXXXX
+  namespace: appXXXXXXXX-cribl-elk-psql
+  serviceName: etn-onboarding
+  port: 5000
+  replicas: 1
+  healthCheck: /health
+  env:
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: etn-database-url
+    - name: SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: secret-key
+    - name: CRIBL_SERVICE_URL
+      value: http://cribl-service:8001
+    - name: ECE_SERVICE_URL
+      value: http://ece-service:8002

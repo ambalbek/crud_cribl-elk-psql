@@ -1,0 +1,21 @@
+deployment:
+  appType: python-multi-jobs
+  appId: appXXXXXXXX
+  namespace: appXXXXXXXX-cribl-elk-psql
+  serviceName: ece-service
+  port: 8002
+  replicas: 1
+  healthCheck: /health
+  env:
+    - name: LOG_LEVEL
+      value: INFO
+    - name: ECE_ES_URL
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: ece-es-url
+    - name: ECE_ES_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: ece-es-token

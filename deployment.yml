@@ -2,133 +2,75 @@ deployment:
   appType: python-multi-jobs
   appId: appXXXXXXXX
   namespace: appXXXXXXXX-cribl-elk-psql
-
-  services:
-    - serviceName: cribl-framework
-      port: 5000
-      replicas: 1
-      healthCheck: /cribl/health
-      volumes:
-        - name: config-volume
-          configMap:
-            name: cribl-config
-      volumeMounts:
-        - name: config-volume
-          mountPath: /app/config.json
-          subPath: config.json
-          readOnly: true
-      env:
-        - name: LOG_LEVEL
-          value: INFO
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: database-url
-        - name: SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: secret-key
-        - name: ADMIN_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: admin-username
-        - name: ADMIN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: admin-password
-        - name: ES_DATASTREAM_URL
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: es-datastream-url
-        - name: ES_DATASTREAM_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: es-datastream-username
-        - name: ES_DATASTREAM_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: es-datastream-password
-        - name: ENT_ES_URL
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: ent-es-url
-        - name: ENT_ES_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: ent-es-username
-        - name: ENT_ES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: ent-es-password
-        - name: CRIBL_SERVICE_URL
-          value: http://cribl-service:8001
-        - name: ECE_SERVICE_URL
-          value: http://ece-service:8002
-        - name: ETN_ONBOARDING_URL
-          value: http://etn-onboarding:5000
-
-    - serviceName: cribl-service
-      port: 8001
-      replicas: 1
-      healthCheck: /health
-      env:
-        - name: LOG_LEVEL
-          value: INFO
-        - name: CRIBL_BASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: cribl-base-url
-        - name: CRIBL_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: cribl-token
-
-    - serviceName: ece-service
-      port: 8002
-      replicas: 1
-      healthCheck: /health
-      env:
-        - name: LOG_LEVEL
-          value: INFO
-        - name: ECE_ES_URL
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: ece-es-url
-        - name: ECE_ES_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: ece-es-token
-
-    - serviceName: etn-onboarding
-      port: 5000
-      replicas: 1
-      healthCheck: /health
-      env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: etn-database-url
-        - name: SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: cribl-elk-psql-secrets
-              key: secret-key
-        - name: CRIBL_SERVICE_URL
-          value: http://cribl-service:8001
-        - name: ECE_SERVICE_URL
-          value: http://ece-service:8002
+  serviceName: cribl-framework
+  port: 5000
+  replicas: 1
+  healthCheck: /cribl/health
+  volumes:
+    - name: config-volume
+      configMap:
+        name: cribl-config
+  volumeMounts:
+    - name: config-volume
+      mountPath: /app/config.json
+      subPath: config.json
+      readOnly: true
+  env:
+    - name: LOG_LEVEL
+      value: INFO
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: database-url
+    - name: SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: secret-key
+    - name: ADMIN_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: admin-username
+    - name: ADMIN_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: admin-password
+    - name: ES_DATASTREAM_URL
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: es-datastream-url
+    - name: ES_DATASTREAM_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: es-datastream-username
+    - name: ES_DATASTREAM_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: es-datastream-password
+    - name: ENT_ES_URL
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: ent-es-url
+    - name: ENT_ES_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: ent-es-username
+    - name: ENT_ES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: ent-es-password
+    - name: CRIBL_SERVICE_URL
+      value: http://cribl-service:8001
+    - name: ECE_SERVICE_URL
+      value: http://ece-service:8002
+    - name: ETN_ONBOARDING_URL
+      value: http://etn-onboarding:5000
