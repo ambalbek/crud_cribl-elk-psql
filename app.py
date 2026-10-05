@@ -207,7 +207,7 @@ def load_config() -> dict:
 # ── Session configuration ─────────────────────────────────────────────────────
 
 _startup_config = load_config()
-app.secret_key = _startup_config.get("secret_key", "CHANGE-ME-insecure-default")
+app.secret_key = os.environ.get("SECRET_KEY") or _startup_config.get("secret_key", "CHANGE-ME-insecure-default")
 app.config["SESSION_COOKIE_NAME"] = "cribl_session"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
@@ -250,17 +250,47 @@ else:
 
 
 def local_authenticate(username, password):
-    """Check local_admins and local_users accounts."""
+    """Check local_admins and local_users accounts.
+
+    Resolution order for each account:
+    1. Environment variables (ADMIN_USERNAME/ADMIN_PASSWORD, USER_USERNAME/USER_PASSWORD)
+    2. config.json auth block
+    """
     config = load_config()
     auth = config.get("auth", {})
-    for admin in auth.get("local_admins", []):
+
+    # Build effective admin list: env var account (if set) + config.json accounts
+    admins = list(auth.get("local_admins", []))
+    env_admin_user = os.environ.get("ADMIN_USERNAME", "").strip()
+    env_admin_pass = os.environ.get("ADMIN_PASSWORD", "").strip()
+    if env_admin_user and env_admin_pass:
+        admins.insert(0, {
+            "username": env_admin_user,
+            "password": env_admin_pass,
+            "display_name": os.environ.get("ADMIN_DISPLAY_NAME", "Admin"),
+        })
+
+    for admin in admins:
         if admin.get("username") == username and admin.get("password") == password:
             log.info("Local admin auth OK — user=%s", username)
             return True, "admin", admin.get("display_name", username)
-    for local_user in auth.get("local_users", []):
+
+    # Build effective user list: env var account (if set) + config.json accounts
+    users = list(auth.get("local_users", []))
+    env_user_user = os.environ.get("USER_USERNAME", "").strip()
+    env_user_pass = os.environ.get("USER_PASSWORD", "").strip()
+    if env_user_user and env_user_pass:
+        users.insert(0, {
+            "username": env_user_user,
+            "password": env_user_pass,
+            "display_name": os.environ.get("USER_DISPLAY_NAME", "User"),
+        })
+
+    for local_user in users:
         if local_user.get("username") == username and local_user.get("password") == password:
             log.info("Local user auth OK — user=%s", username)
             return True, "user", local_user.get("display_name", username)
+
     return False, None, "Invalid credentials."
 
 
@@ -347,7 +377,7 @@ def es_index(doc: dict, config: dict) -> str:
     session.verify = not skip_ssl
 
     headers = {"Content-Type": "application/json"}
-    token    = ds.get("token",    "").strip()
+    token    = (os.environ.get("ES_DATASTREAM_TOKEN", "") or ds.get("token", "")).strip()
     username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
     password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
@@ -400,7 +430,7 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     headers = {"Content-Type": "application/json"}
-    token    = ds.get("token",    "").strip()
+    token    = (os.environ.get("ES_DATASTREAM_TOKEN", "") or ds.get("token", "")).strip()
     username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
     password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
@@ -442,6 +472,26 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
 
 
 # ── Entitlement helpers ───────────────────────────────────────────────────────
+
+def _resolve_entitlement_clusters(ent_cfg: dict) -> list[dict]:
+    """Return the entitlement cluster list with env var overrides.
+
+    If ENT_ES_URL is set, it is prepended as a cluster entry (or overrides the
+    first cluster's credentials). This lets K8s inject credentials via Secrets
+    without baking them into config.json.
+    """
+    clusters = list(ent_cfg.get("clusters", []))
+    env_url  = os.environ.get("ENT_ES_URL", "").strip()
+    if env_url:
+        env_cluster = {
+            "name":     os.environ.get("ENT_ES_NAME", "default").strip(),
+            "url":      env_url,
+            "username": os.environ.get("ENT_ES_USERNAME", "elastic").strip(),
+            "password": os.environ.get("ENT_ES_PASSWORD", "").strip(),
+            "token":    os.environ.get("ENT_ES_TOKEN", "").strip(),
+        }
+        clusters.insert(0, env_cluster)
+    return clusters
 
 def extract_entitlement_cns(rules, filter_text):
     """
@@ -598,11 +648,11 @@ def _cribl_base_and_headers(
     if not cribl_url and CRIBL_SERVICE_URL and not token and not username:
         return base_url, headers
 
-    # Resolve credentials: form overrides → config.json fallback
+    # Resolve credentials: form overrides → env vars → config.json fallback
     creds = config.get("credentials", {})
-    resolved_token = token or creds.get("token", "")
-    resolved_user  = username or creds.get("username", "")
-    resolved_pass  = password or creds.get("password", "")
+    resolved_token = token or os.environ.get("CRIBL_TOKEN", "") or creds.get("token", "")
+    resolved_user  = username or os.environ.get("CRIBL_USERNAME", "") or creds.get("username", "")
+    resolved_pass  = password or os.environ.get("CRIBL_PASSWORD", "") or creds.get("password", "")
 
     if resolved_token:
         headers["Authorization"] = f"Bearer {resolved_token}"
@@ -1240,7 +1290,7 @@ def portal_admin_update_status():
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     headers = {"Content-Type": "application/json"}
-    token    = ds.get("token",    "").strip()
+    token    = (os.environ.get("ES_DATASTREAM_TOKEN", "") or ds.get("token", "")).strip()
     username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
     password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
@@ -1311,7 +1361,7 @@ def health_es():
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         headers = {"Content-Type": "application/json"}
-        token    = ds.get("token",    "").strip()
+        token    = (os.environ.get("ES_DATASTREAM_TOKEN", "") or ds.get("token", "")).strip()
         username = ds.get("username", "").strip()
         password = ds.get("password", "").strip()
         if token:
@@ -1427,7 +1477,7 @@ def api_entitlements():
         return jsonify({"errors": [f"Could not load config.json: {exc}"]}), 500
 
     ent_cfg     = config.get("entitlement", {})
-    clusters    = ent_cfg.get("clusters", [])
+    clusters    = _resolve_entitlement_clusters(ent_cfg)
     filter_text = ent_cfg.get("entitlementFilter", "")
 
     if not clusters:
@@ -2109,7 +2159,7 @@ def _make_es_session_for_catalog(ds: dict):
     if skip_ssl:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     headers = {"Content-Type": "application/json"}
-    token    = ds.get("token",    "").strip()
+    token    = (os.environ.get("ES_DATASTREAM_TOKEN", "") or ds.get("token", "")).strip()
     username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
     password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
     if token:
@@ -2237,7 +2287,7 @@ def _build_catalog(config: dict) -> list:
 
     # ── 2. ELK role mappings from all entitlement clusters ────────────────────
     ent_cfg  = config.get("entitlement", {})
-    clusters = ent_cfg.get("clusters", [])
+    clusters = _resolve_entitlement_clusters(ent_cfg)
     all_role_mappings: dict = {}
     for cluster in clusters:
         try:
@@ -2627,7 +2677,7 @@ def api_catalog_delete(apm_id):
 
     # ── 2. Remove ELK role_mappings + roles ───────────────────────────────────
     ent_cfg  = config.get("entitlement", {})
-    clusters = ent_cfg.get("clusters", [])
+    clusters = _resolve_entitlement_clusters(ent_cfg)
 
     for cluster in clusters:
         cluster_url   = cluster.get("url", "").rstrip("/")
