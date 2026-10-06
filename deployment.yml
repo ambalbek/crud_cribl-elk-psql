@@ -8,8 +8,8 @@ deployment:
   healthCheck: /cribl/health
   volumes:
     - name: config-volume
-      configMap:
-        name: cribl-config
+      secret:
+        secretName: cribl-framework-appconfig
   volumeMounts:
     - name: config-volume
       mountPath: /app/config.json

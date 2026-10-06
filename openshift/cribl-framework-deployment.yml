@@ -113,5 +113,5 @@ spec:
               memory: 512Mi
       volumes:
         - name: app-config
-          configMap:
-            name: cribl-framework-appconfig
+          secret:
+            secretName: cribl-framework-appconfig
