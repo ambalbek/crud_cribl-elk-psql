@@ -1,5 +1,9 @@
 FROM python:3.13-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    OPENSSL_CONF=/dev/null
+
 WORKDIR /app
 
 # Install curl for healthcheck

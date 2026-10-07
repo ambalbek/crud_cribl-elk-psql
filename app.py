@@ -15,7 +15,6 @@ Environment variables:
     LOG_LEVEL   DEBUG / INFO / WARNING / ERROR  (default: INFO)
     LOG_FILE    Path to log file  (default: none, console only)
 """
-import fips_patch  # noqa: F401 — must be first import (FIPS hashlib workaround)
 import json
 import logging
 import os
