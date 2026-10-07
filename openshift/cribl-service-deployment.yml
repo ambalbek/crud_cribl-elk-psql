@@ -5,6 +5,7 @@ metadata:
   namespace: appXXXXXXXX-cribl-elk-psql
   labels:
     app: cribl-elk-psql
+    app.kubernetes.io/part-of: cribl-elk-psql
     component: cribl-service
 spec:
   replicas: 1

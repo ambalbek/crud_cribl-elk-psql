@@ -5,7 +5,10 @@ metadata:
   namespace: appXXXXXXXX-cribl-elk-psql
   labels:
     app: cribl-elk-psql
+    app.kubernetes.io/part-of: cribl-elk-psql
     component: cribl-framework
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"cribl-service"},{"apiVersion":"apps/v1","kind":"Deployment","name":"ece-service"},{"apiVersion":"apps/v1","kind":"Deployment","name":"etn-onboarding"}]'
 spec:
   replicas: 1
   selector:
