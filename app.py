@@ -15,6 +15,8 @@ Environment variables:
     LOG_LEVEL   DEBUG / INFO / WARNING / ERROR  (default: INFO)
     LOG_FILE    Path to log file  (default: none, console only)
 """
+import fips_patch  # noqa: F401 — must be first import (FIPS hashlib workaround)
+import hashlib
 import json
 import logging
 import os
@@ -34,6 +36,7 @@ from pathlib import Path
 import requests as http_client
 import urllib3
 from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from flask.sessions import SecureCookieSessionInterface
 from requests.auth import HTTPBasicAuth
 from werkzeug.exceptions import HTTPException
 
@@ -210,6 +213,14 @@ def load_config() -> dict:
 
 
 # ── Session configuration ─────────────────────────────────────────────────────
+
+
+class FipsSessionInterface(SecureCookieSessionInterface):
+    """Sign session cookies with HMAC-SHA256; the default SHA-1 fails under FIPS."""
+    digest_method = staticmethod(hashlib.sha256)
+
+
+app.session_interface = FipsSessionInterface()
 
 _startup_config = load_config()
 app.secret_key = os.environ.get("SECRET_KEY") or _startup_config.get("secret_key", "CHANGE-ME-insecure-default")
