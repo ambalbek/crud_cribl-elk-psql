@@ -27,6 +27,8 @@ spec:
             - containerPort: 5000
               protocol: TCP
           env:
+            - name: OPENSSL_CONF
+              value: /dev/null
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -63,4 +65,4 @@ spec:
               memory: 256Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 768Mi
