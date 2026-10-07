@@ -200,6 +200,11 @@ def _handle_exception(exc):
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
+    if not CONFIG_PATH.exists():
+        logging.getLogger("cribl-framework").warning(
+            "config.json not found at %s — using env vars / defaults", CONFIG_PATH
+        )
+        return {}
     with open(CONFIG_PATH, encoding="utf-8") as f:
         return json.load(f)
 
