@@ -223,6 +223,10 @@ _db_url = (
     or _startup_config.get("database", {}).get("url", "")
 )
 if _db_url:
+    # Ensure psycopg2 driver is used — plain "postgresql://" defaults to psycopg (v3)
+    # in SQLAlchemy 2.x, which may not be installed.
+    if _db_url.startswith("postgresql://"):
+        _db_url = _db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)

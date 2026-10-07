@@ -3,10 +3,15 @@ import os
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
+    _raw_db_url = os.environ.get(
         "DATABASE_URL",
         "postgresql://etn_user:etn_pass@localhost:5432/etn_onboarding",
     )
+    # Force psycopg2 driver — plain "postgresql://" defaults to psycopg (v3)
+    # in SQLAlchemy 2.x, which may not be installed.
+    if _raw_db_url.startswith("postgresql://"):
+        _raw_db_url = _raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    SQLALCHEMY_DATABASE_URI = _raw_db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Auth
