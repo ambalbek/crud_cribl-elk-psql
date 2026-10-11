@@ -84,7 +84,7 @@ def trigger_collection(request_id):
 @delivery_bp.route("/<uuid:request_id>/routing", methods=["POST"])
 @require_role("platform_admin")
 def trigger_routing(request_id):
-    """Trigger an ETN Portal routing job and transition to delivery_routing."""
+    """Trigger an ETN Portal routing job and transition to delivery_route."""
     onboarding_req = _get_request_or_404(request_id)
     if not onboarding_req:
         return jsonify({"error": "Request not found"}), 404
@@ -95,7 +95,7 @@ def trigger_routing(request_id):
     try:
         audit_entry = transition_request(
             onboarding_req,
-            RequestStatus.delivery_routing,
+            RequestStatus.delivery_route,
             actor=actor,
             action="trigger_routing",
         )

@@ -22,7 +22,7 @@ router = APIRouter(prefix="/ece/indexes/ilm")
 
 @router.get("/policies")
 async def list_ilm_policies(
-    target: str = Query(default="nonprod", description="'nonprod' or 'prod'"),
+    target: str = Query(default="nonprod", pattern="^(nonprod|prod)$", description="'nonprod' or 'prod'"),
     client: AsyncECEClient = Depends(get_async_ece_client),
 ) -> dict[str, Any]:
     """List all ILM policies from the target ES cluster."""
@@ -32,7 +32,7 @@ async def list_ilm_policies(
 @router.get("/policies/{name}")
 async def get_ilm_policy(
     name: str,
-    target: str = Query(default="nonprod"),
+    target: str = Query(default="nonprod", pattern="^(nonprod|prod)$"),
     client: AsyncECEClient = Depends(get_async_ece_client),
 ) -> dict[str, Any]:
     """Fetch a single ILM policy by name."""
@@ -43,7 +43,7 @@ async def get_ilm_policy(
 async def put_ilm_policy(
     name: str,
     body: dict[str, Any] = Body(...),
-    target: str = Query(default="nonprod"),
+    target: str = Query(default="nonprod", pattern="^(nonprod|prod)$"),
     client: AsyncECEClient = Depends(get_async_ece_client),
 ) -> dict[str, Any]:
     """Create or replace an ILM policy."""
@@ -53,7 +53,7 @@ async def put_ilm_policy(
 @router.delete("/policies/{name}")
 async def delete_ilm_policy(
     name: str,
-    target: str = Query(default="nonprod"),
+    target: str = Query(default="nonprod", pattern="^(nonprod|prod)$"),
     client: AsyncECEClient = Depends(get_async_ece_client),
 ) -> dict[str, Any]:
     """Delete an ILM policy by name."""
@@ -63,7 +63,7 @@ async def delete_ilm_policy(
 @router.get("/explain/{index}")
 async def explain_ilm(
     index: str,
-    target: str = Query(default="nonprod"),
+    target: str = Query(default="nonprod", pattern="^(nonprod|prod)$"),
     client: AsyncECEClient = Depends(get_async_ece_client),
 ) -> dict[str, Any]:
     """Return ILM explain output for an index (shows current phase, age, actions)."""

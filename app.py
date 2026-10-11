@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import uuid
@@ -240,16 +241,22 @@ if _db_url:
         db.create_all()
         # Auto-add any missing columns so the model stays in sync with the DB
         from sqlalchemy import inspect as sa_inspect, text
+        from sqlalchemy.sql import quoted_name
         inspector = sa_inspect(db.engine)
+        known_tables = set(db.Model.metadata.tables.keys())
         for table_name, model in db.Model.metadata.tables.items():
+            if table_name not in known_tables:
+                continue
             if not inspector.has_table(table_name):
                 continue
             existing = {col["name"] for col in inspector.get_columns(table_name)}
             for col in model.columns:
                 if col.name not in existing:
                     col_type = col.type.compile(db.engine.dialect)
+                    safe_table = quoted_name(table_name, quote=True)
+                    safe_col = quoted_name(col.name, quote=True)
                     db.session.execute(text(
-                        f'ALTER TABLE {table_name} ADD COLUMN "{col.name}" {col_type}'
+                        f'ALTER TABLE {safe_table} ADD COLUMN {safe_col} {col_type}'
                     ))
                     log.info("Auto-added missing column %s.%s (%s)", table_name, col.name, col_type)
         db.session.commit()
@@ -562,7 +569,7 @@ def fetch_role_mappings(cluster):
         resp = http_client.get(
             url,
             auth=HTTPBasicAuth(cluster['username'], cluster['password']),
-            verify=False,
+            verify=not cluster.get('skip_ssl', False),
             timeout=(10, 120),
         )
         elapsed = time.time() - start
@@ -1385,8 +1392,8 @@ def health_es():
 
         headers = {"Content-Type": "application/json"}
         token    = (os.environ.get("ES_DATASTREAM_TOKEN", "") or ds.get("token", "")).strip()
-        username = ds.get("username", "").strip()
-        password = ds.get("password", "").strip()
+        username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
+        password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
         if token:
             headers["Authorization"] = f"ApiKey {token}"
 
@@ -2052,7 +2059,7 @@ def run_role_rm():
                 body, status = _svc_post(
                     ECE_SERVICE_URL,
                     "/api/v1/roles/provision",
-                    params=params,
+                    json=params,
                 )
             except Exception as exc:
                 log.error("ece_service provision failed app=%s: %s", apmid, exc)
@@ -2165,6 +2172,7 @@ def run_role_rm():
 
 # ── Catalog cache ──────────────────────────────────────────────────────────────
 _catalog_cache: dict = {"data": None, "ts": 0.0}
+_catalog_cache_lock  = threading.Lock()
 _CATALOG_CACHE_TTL   = 60  # seconds
 
 
@@ -2491,12 +2499,13 @@ def catalog_page():
 @login_required
 def api_catalog():
     now = time.time()
-    if (
-        _catalog_cache["data"] is not None
-        and (now - _catalog_cache["ts"]) < _CATALOG_CACHE_TTL
-    ):
-        log.info("api/catalog — cache hit (age=%.0fs)", now - _catalog_cache["ts"])
-        return jsonify(_catalog_cache["data"])
+    with _catalog_cache_lock:
+        if (
+            _catalog_cache["data"] is not None
+            and (now - _catalog_cache["ts"]) < _CATALOG_CACHE_TTL
+        ):
+            log.info("api/catalog — cache hit (age=%.0fs)", now - _catalog_cache["ts"])
+            return jsonify(_catalog_cache["data"])
 
     try:
         config = load_config()
@@ -2505,8 +2514,9 @@ def api_catalog():
 
     try:
         data = _build_catalog(config)
-        _catalog_cache["data"] = data
-        _catalog_cache["ts"]   = time.time()
+        with _catalog_cache_lock:
+            _catalog_cache["data"] = data
+            _catalog_cache["ts"]   = time.time()
         return jsonify(data)
     except Exception as exc:
         log.error("api/catalog — build failed:\n%s", traceback.format_exc())
@@ -2705,6 +2715,7 @@ def api_catalog_delete(apm_id):
     for cluster in clusters:
         cluster_url   = cluster.get("url", "").rstrip("/")
         cluster_token = cluster.get("token", "").strip()
+        cluster_ssl   = not cluster.get("skip_ssl", False)
         cluster_auth  = None if cluster_token else HTTPBasicAuth(
             cluster.get("username", ""), cluster.get("password", "")
         )
@@ -2737,7 +2748,7 @@ def api_catalog_delete(apm_id):
                 try:
                     del_r = http_client.delete(
                         f"{cluster_url}/_security/role_mapping/{mapping_name}",
-                        auth=cluster_auth, headers=cluster_hdrs, verify=False, timeout=30,
+                        auth=cluster_auth, headers=cluster_hdrs, verify=cluster_ssl, timeout=30,
                     )
                     mapping_action["status"] = del_r.status_code
                 except Exception as exc:
@@ -2755,7 +2766,7 @@ def api_catalog_delete(apm_id):
                     try:
                         role_del = http_client.delete(
                             f"{cluster_url}/_security/role/{role_name}",
-                            auth=cluster_auth, headers=cluster_hdrs, verify=False, timeout=30,
+                            auth=cluster_auth, headers=cluster_hdrs, verify=cluster_ssl, timeout=30,
                         )
                         role_action["status"] = role_del.status_code
                     except Exception as exc:

@@ -334,7 +334,7 @@ class AsyncCriblClient:
             raise HTTPException(status_code=404, detail=f"Route '{app_id}' not found in table '{table}'")
         snap = _save_snapshot(table, current)
         logger.info("update_route wg=%s table=%s app_id=%s snapshot=%s", worker_group, table, app_id, snap)
-        return await self._patch(f"/api/v1/m/{worker_group}/routes/{table}", obj)
+        return await self._patch(f"/api/v1/m/{worker_group}/routes/{table}", current)
 
     async def delete_route(
         self, worker_group: str, table: str, app_id: str, dry_run: bool = False
@@ -367,7 +367,7 @@ class AsyncCriblClient:
         snap = _save_snapshot(table, current)
         result["snapshot"] = str(snap)
         logger.info("delete_route wg=%s table=%s app_id=%s", worker_group, table, app_id)
-        await self._patch(f"/api/v1/m/{worker_group}/routes/{table}", obj)
+        await self._patch(f"/api/v1/m/{worker_group}/routes/{table}", current)
         return result
 
     # ── Destinations (outputs) ────────────────────────────────────────────────

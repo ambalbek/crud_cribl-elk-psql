@@ -70,8 +70,8 @@ def _install_pack_if_needed(
     except HTTPException as exc:
         if exc.status_code != 404:
             raise  # unexpected error, don't swallow
-    except Exception:
-        pass  # network error checking existence — proceed to install
+    except Exception as exc:
+        logger.warning("Pack existence check failed for %s, proceeding to install: %s", pack_id, exc)
 
     # Install with retry
     install_payload = {

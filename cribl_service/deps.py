@@ -253,7 +253,7 @@ class CriblClient:
         before = len(target[key])
         target[key] = [
             r for r in target[key]
-            if r.get("id") != route_name and r.get("name") != route_name
+            if r.get("id", "").lower() != route_name.lower() and r.get("name", "").lower() != route_name.lower()
         ]
         if len(target[key]) == before:
             raise HTTPException(status_code=404, detail=f"Route '{route_name}' not found")

@@ -183,7 +183,7 @@ class ECEClient:
             raise HTTPException(status_code=502, detail=f"ES list_indexes: {exc}")
         if r.status_code >= 400:
             raise HTTPException(status_code=r.status_code, detail=r.text[:400])
-        return r.json()
+        return r.json() if r.content else []
 
     def get_index(self, name: str, target: str = "nonprod") -> dict[str, Any]:
         call = self._es_prod if target == "prod" else self._es
