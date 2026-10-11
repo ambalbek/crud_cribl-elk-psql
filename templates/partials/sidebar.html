@@ -1,0 +1,98 @@
+{# Shared portal sidebar. Set `nav_active` before including:
+   {% set nav_active = 'catalog' %}{% include 'partials/sidebar.html' %}
+   Values: catalog | onboarding | entitlements | pusher | admin
+   Expects page context: current_user, current_display_name, current_role #}
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  .cf-app { display:flex; min-height:100vh; }
+  .cf-main { flex:1; min-width:0; }
+  .cf-sidebar { width:250px; flex-shrink:0; background:#ffffff; border-right:1px solid #e5e8ee; position:sticky; top:0; height:100vh; display:flex; flex-direction:column; padding:16px 14px; font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif; }
+  .cf-sidebar * { box-sizing:border-box; }
+  .cf-brand { display:flex; align-items:center; gap:10px; padding:6px 8px 16px; text-decoration:none; }
+  .cf-brand-logo { width:32px; height:32px; background:#e11d2a; border-radius:9px; display:grid; place-items:center; color:#fff; font-size:16px; box-shadow:0 6px 14px -5px rgba(225,29,42,.7); flex-shrink:0; }
+  .cf-brand-name { font-weight:700; font-size:1rem; letter-spacing:-.01em; line-height:1.1; color:#0f172a; }
+  .cf-brand-sub { font-size:.68rem; letter-spacing:.8px; text-transform:uppercase; color:#94a3b8; font-weight:600; }
+  .cf-nav-label { font-size:.68rem; font-weight:600; letter-spacing:.7px; text-transform:uppercase; color:#94a3b8; padding:14px 10px 6px; margin:0; }
+  .cf-nav { display:flex; flex-direction:column; gap:2px; }
+  .cf-nav a { display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:8px; color:#334155; font-size:.9rem; font-weight:500; position:relative; text-decoration:none; transition:background .13s, color .13s; }
+  .cf-nav a svg { width:18px; height:18px; stroke:currentColor; stroke-width:1.9; fill:none; opacity:.85; flex-shrink:0; }
+  .cf-nav a:hover { background:#eef1f5; color:#0f172a; }
+  .cf-nav a.cf-active { background:#fef2f2; color:#be1621; font-weight:600; }
+  .cf-nav a.cf-active::before { content:""; position:absolute; left:-14px; top:8px; bottom:8px; width:3px; border-radius:0 3px 3px 0; background:#e11d2a; }
+  .cf-nav a.cf-active svg { opacity:1; }
+  .cf-foot { margin-top:auto; border-top:1px solid #e5e8ee; padding-top:12px; }
+  .cf-user { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:9px; }
+  .cf-avatar { width:32px; height:32px; border-radius:9px; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-size:.76rem; font-weight:700; display:grid; place-items:center; flex-shrink:0; }
+  .cf-user-meta { min-width:0; }
+  .cf-user-name { font-size:.84rem; font-weight:600; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cf-user-role { font-size:.72rem; color:#64748b; }
+  .cf-logout { display:flex; align-items:center; gap:9px; padding:9px 11px; margin-top:4px; border-radius:8px; color:#64748b; font-size:.85rem; font-weight:500; text-decoration:none; }
+  .cf-logout:hover { background:#fef2f2; color:#be1621; }
+  .cf-logout svg { width:17px; height:17px; stroke:currentColor; stroke-width:1.9; fill:none; }
+  .cf-menu-btn { display:none; position:fixed; top:14px; left:14px; z-index:60; width:40px; height:40px; border:1px solid #e5e8ee; background:#fff; border-radius:9px; cursor:pointer; place-items:center; box-shadow:0 2px 8px rgba(15,23,42,.1); }
+  .cf-menu-btn svg { width:20px; height:20px; stroke:#0f172a; stroke-width:2; fill:none; }
+  .cf-scrim { display:none; position:fixed; inset:0; background:rgba(15,23,42,.35); z-index:54; }
+  @media (max-width:720px) {
+    .cf-sidebar { position:fixed; left:-270px; top:0; z-index:55; transition:left .2s; box-shadow:0 10px 30px rgba(15,23,42,.25); }
+    .cf-sidebar.cf-open { left:0; }
+    .cf-sidebar.cf-open ~ .cf-scrim { display:block; }
+    .cf-menu-btn { display:grid; }
+  }
+</style>
+
+<button class="cf-menu-btn" onclick="var s=document.getElementById('cf-sidebar');s.classList.toggle('cf-open');" aria-label="Toggle navigation">
+  <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+</button>
+
+<aside class="cf-sidebar" id="cf-sidebar">
+  <a class="cf-brand" href="/cribl/">
+    <div class="cf-brand-logo">📡</div>
+    <div>
+      <div class="cf-brand-name">Cribl Framework</div>
+      <div class="cf-brand-sub">Observability</div>
+    </div>
+  </a>
+
+  <p class="cf-nav-label">Platform</p>
+  <nav class="cf-nav">
+    <a href="{{ url_for('catalog_page') }}" class="{{ 'cf-active' if nav_active == 'catalog' else '' }}">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Catalog
+    </a>
+    <a href="/cribl/" class="{{ 'cf-active' if nav_active == 'onboarding' else '' }}">
+      <svg viewBox="0 0 24 24"><path d="M12 3l9 4.5v9L12 21 3 16.5v-9L12 3z"/><path d="M12 12l9-4.5M12 12v9M12 12L3 7.5"/></svg>
+      Onboarding
+    </a>
+    <a href="{{ url_for('entitlements_page') }}" class="{{ 'cf-active' if nav_active == 'entitlements' else '' }}">
+      <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+      Entitlements
+    </a>
+    {% if current_role == 'admin' %}
+    <a href="{{ url_for('cribl_app_page') }}" class="{{ 'cf-active' if nav_active == 'pusher' else '' }}">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      Pusher
+    </a>
+    <a href="{{ url_for('portal_admin_update_status') }}" class="{{ 'cf-active' if nav_active == 'admin' else '' }}">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1A1.6 1.6 0 007 19.3a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.1-2.7H1a2 2 0 110-4h.1A1.6 1.6 0 003.3 7a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V1a2 2 0 114 0v.1a1.6 1.6 0 002.7 1.1 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1H23a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></svg>
+      Administration
+    </a>
+    {% endif %}
+  </nav>
+
+  <div class="cf-foot">
+    {% if current_user %}
+    <div class="cf-user">
+      <div class="cf-avatar">{{ (current_display_name or current_user)[:2] | upper }}</div>
+      <div class="cf-user-meta">
+        <div class="cf-user-name">{{ current_display_name or current_user }}</div>
+        <div class="cf-user-role">{{ current_role | capitalize if current_role else 'User' }}</div>
+      </div>
+    </div>
+    <a href="{{ url_for('logout') }}" class="cf-logout">
+      <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      Sign out
+    </a>
+    {% endif %}
+  </div>
+</aside>
+<div class="cf-scrim" onclick="document.getElementById('cf-sidebar').classList.remove('cf-open')"></div>

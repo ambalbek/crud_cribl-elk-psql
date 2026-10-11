@@ -493,27 +493,13 @@
   </style>
 </head>
 <body>
+<div class="cf-app">
+{% set nav_active = 'catalog' %}
+{% include 'partials/sidebar.html' %}
+<div class="cf-main">
+
 
 <!-- ══════════ HEADER ══════════ -->
-<header>
-  <div class="logo-icon">&#128225;</div>
-  <span class="logo-text"><a href="/cribl/">Cribl Framework</a></span>
-  <span class="badge">Service Catalog</span>
-  <div class="nav-links">
-    <a href="{{ url_for('portal_index') }}">Portal</a>
-    <a href="{{ url_for('entitlements_page') }}">Entitlements</a>
-    <a href="{{ url_for('catalog_page') }}" class="active">Catalog</a>
-    {% if current_role == 'admin' %}
-    <a href="{{ url_for('cribl_app_page') }}">Pusher</a>
-    <a href="{{ url_for('portal_admin_update_status') }}">Admin</a>
-    {% endif %}
-    {% if current_user %}
-    <span style="color:var(--muted);font-size:.84rem;">{{ current_display_name }}</span>
-    <a href="{{ url_for('logout') }}" style="border-color:var(--accent);color:var(--accent);">Logout</a>
-    {% endif %}
-  </div>
-</header>
-
 <!-- ══════════ MAIN ══════════ -->
 <main>
   <div id="alertError" class="alert-error" role="alert"></div>
@@ -1126,5 +1112,8 @@
   /* ── Boot ── */
   fetchCatalog();
 </script>
+
+</div><!-- /cf-main -->
+</div><!-- /cf-app -->
 </body>
 </html>

@@ -202,21 +202,11 @@
   </style>
 </head>
 <body>
+<div class="cf-app">
+{% set nav_active = 'admin' %}
+{% include 'partials/sidebar.html' %}
+<div class="cf-main">
 
-<header>
-  <div class="logo-icon">📡</div>
-  <span class="logo-text"><a href="/cribl/" style="color:inherit;text-decoration:none">Cribl Framework</a></span>
-  <span class="badge">Admin</span>
-  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
-    <a href="{{ url_for('portal_index') }}" style="color:var(--muted);text-decoration:none;font-size:.84rem;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border);transition:all .15s;">Portal</a>
-    <a href="{{ url_for('cribl_app_page') }}" style="color:var(--muted);text-decoration:none;font-size:.84rem;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border);transition:all .15s;">Pusher</a>
-    <a href="{{ url_for('entitlements_page') }}" style="color:var(--muted);text-decoration:none;font-size:.84rem;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border);transition:all .15s;">Entitlements</a>
-    {% if current_user %}
-    <span style="color:var(--muted);font-size:.84rem;margin-left:8px;">{{ current_display_name }}</span>
-    <a href="{{ url_for('logout') }}" style="color:var(--accent);text-decoration:none;font-size:.84rem;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--accent);transition:all .15s;">Logout</a>
-    {% endif %}
-  </div>
-</header>
 
 <main>
   <div class="card">
@@ -315,5 +305,8 @@
     if (e.key === 'Enter') updateStatus();
   });
 </script>
+
+</div><!-- /cf-main -->
+</div><!-- /cf-app -->
 </body>
 </html>

@@ -131,20 +131,11 @@
   </style>
 </head>
 <body>
+<div class="cf-app">
+{% set nav_active = 'pusher' %}
+{% include 'partials/sidebar.html' %}
+<div class="cf-main">
 
-<header>
-  <div class="logo">
-    <div class="logo-icon">📡</div>
-    Cribl Pusher
-    <span class="badge badge-internal">Internal</span>
-  </div>
-  <a class="back-btn" href="{{ url_for('entitlements_page') }}">Entitlements</a>
-  <a class="back-btn" href="{{ url_for('landing') }}">&#8592; Back to Framework</a>
-  {% if current_user %}
-  <span style="color:var(--muted);font-size:.84rem;margin-left:auto;">{{ current_display_name }}</span>
-  <a class="back-btn" href="{{ url_for('logout') }}" style="color:var(--accent);">Logout</a>
-  {% endif %}
-</header>
 
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab(event,'tab1')">📡 Cribl Pusher</button>
@@ -1535,5 +1526,8 @@ onWorkspaceChange('t1');
 onWorkspaceChange('t2');
 onWorkspaceChange('t3');
 </script>
+
+</div><!-- /cf-main -->
+</div><!-- /cf-app -->
 </body>
 </html>
