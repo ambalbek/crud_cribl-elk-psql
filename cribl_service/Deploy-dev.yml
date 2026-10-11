@@ -1,0 +1,20 @@
+# Yaml sample
+deployment:
+  # appType is required.
+  # appType is to indicate the deployment process to pick the right template for deployment
+  # Options are `java-app` and `static-app`. There will be more appType templates available in the future.
+  appType: python-multi-jobs
+
+  # appId is required.
+  # appId is the application id of application. Application id must have an active application defined in sightline
+  appId: appXXXXXXXX
+
+  # namespace is required.
+  # Openshift namespace/project name. This is the Openshift construct and can be provisioned by infrastructure team.
+  namespace: appXXXXXXXX-cribl-elk-psql-dev
+
+  serviceName: cribl-service
+
+  # configRepoURL is optional.
+  # configRepo github URL must be specified
+  #configRepoURL: <config repo github url>
