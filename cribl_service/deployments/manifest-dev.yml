@@ -1,0 +1,63 @@
+image:
+  # The Image name will be overridden by CD process
+  name: ""
+  # The Image tag will be overridden by CD process
+  tag: ""
+
+# appfile as python startup file with extension .py or appscript value as a startup shell script. If both are mentioned only appfile value is effective
+#appfile: app.py
+appscript: app.sh
+
+podLabels: {}
+
+route:
+  enabled: false
+  # hostName: <Host name override. If not provided openshift will auto generate the host name>
+
+autoscaling:
+  enabled: false
+  # minReplicas: 4
+  # maxReplicas: 6
+  # targetCPUAverageValue: 4
+  # targetMemoryAverageValue: 3Gi
+
+cyberark:
+  containername: authenticator
+  user: aro-dev-appXXXXXXXX
+  secrets:
+    - name: AZURE_CLIENT_NAME
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/AZURESP-azure-hcsc-dev-XXXXXXXX007/username"
+    - name: AZURE_CLIENT_SECRET
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/AZURESP-azure-hcsc-dev-XXXXXXXX007/password"
+    - name: CRIBL_BASE_URL
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-dev/cribl-base-url/value"
+    - name: CRIBL_TOKEN
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-dev/cribl-token/value"
+
+service:
+  type: http
+  port: 8001
+
+ssl:
+  debug:
+    enabled: false
+
+runTests:
+  enabled: false
+
+# Allows multiple jobs scheduled for different purposes atleast one job is required.
+# NOTE: sample maintenance job below — replace schedule/resources with real jobs,
+# or drop this section and switch appType if this service runs no scheduled jobs.
+jobs:
+  #------------------------------Job for MT------------------------------
+  - subname: mt
+    schedule: "0 3 * * 0"
+
+    podLabels: { job-for: MT }
+
+    resources:
+      limits:
+        memory: 2Gi
+      requests:
+        cpu: 1
+        memory: 2Gi
