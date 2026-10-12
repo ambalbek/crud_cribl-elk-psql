@@ -689,6 +689,24 @@ def _svc_patch(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
     return body, resp.status_code
 
 
+def _svc_delete(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
+    """
+    DELETE to an internal microservice.  Returns (json_body, status_code).
+    Raises RuntimeError if the service URL is not configured.
+    """
+    if not base_url:
+        raise RuntimeError("Service URL is not configured")
+    url = base_url + path
+    extra_hdrs = kwargs.pop("headers", None)
+    verify = kwargs.pop("verify", True)
+    resp = http_client.delete(url, timeout=120, headers=extra_hdrs, verify=verify, **kwargs)
+    try:
+        body = resp.json()
+    except (ValueError, TypeError):
+        body = {"raw": resp.text}
+    return body, resp.status_code
+
+
 def _cribl_base_and_headers(
     cribl_url: str = "",
     token: str = "",
@@ -1359,144 +1377,6 @@ def portal_ldap_lookup():
         except Exception:
             pass
         return jsonify({"error": "LDAP search failed"}), 500
-
-
-@app.route("/cribl/portal/admin/update-status", methods=["GET", "POST"])
-@app.route("/cribl/admin/update-status", methods=["GET", "POST"])
-@admin_required
-def portal_admin_update_status():
-    if request.method == "GET":
-        return render_template("admin.html")
-    try:
-        config = load_config()
-    except Exception as exc:
-        return jsonify({"errors": [f"Could not load config.json: {exc}"]}), 500
-
-    data       = request.get_json(silent=True) or {}
-    request_id = (data.get("request_id") or "").strip()
-    status     = (data.get("status")     or "").strip()
-
-    if not request_id:
-        return jsonify({"errors": ["request_id is required"]}), 400
-    if status not in ("pending", "done", "rejected"):
-        return jsonify({"errors": ["status must be one of: pending, done, rejected"]}), 400
-
-    ds       = config.get("datastream", {})
-    base_url = ds.get("elk_url", "").strip().rstrip("/")
-    index    = ds.get("index", "logs-cribl-onboarding-requests")
-    skip_ssl = ds.get("skip_ssl", False)
-    timeout  = ds.get("timeout", 30)
-
-    if not base_url:
-        return jsonify({"errors": ["datastream.elk_url is not configured in config.json"]}), 500
-
-    if not base_url.startswith(("http://", "https://")):
-        base_url = "https://" + base_url
-
-    if skip_ssl:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    headers = {"Content-Type": "application/json"}
-    token    = (os.environ.get("ES_DATASTREAM_TOKEN", "") or ds.get("token", "")).strip()
-    username = (os.environ.get("ES_DATASTREAM_USERNAME") or ds.get("username", "")).strip()
-    password = (os.environ.get("ES_DATASTREAM_PASSWORD") or ds.get("password", "")).strip()
-    if token:
-        headers["Authorization"] = f"ApiKey {token}"
-
-    session = http_client.Session()
-    session.verify = not skip_ssl
-    if not token and username:
-        session.auth = (username, password)
-
-    # Search by request_id OR apmid — the user may enter either format
-    payload = {
-        "query": {
-            "bool": {
-                "should": [
-                    {"term": {"request_id.keyword": request_id}},
-                    {"term": {"apmid.keyword": request_id}},
-                ],
-                "minimum_should_match": 1,
-            },
-        },
-        "script": {
-            "source": "ctx._source.status = params.status",
-            "lang": "painless",
-            "params": {"status": status},
-        },
-    }
-
-    # ── Update PostgreSQL ────────────────────────────────────────────────────
-    # The user may enter either the REQ-... format (PSQL) or UUID (ES/etn).
-    # Try request_id first; if not found, search by apmid in case the input
-    # is an apmid, and also look up via the ES UUID embedded in request_id.
-    apmid = None
-    if _db_url:
-        try:
-            row = OnboardingRequest.query.filter_by(request_id=request_id).first()
-            if not row:
-                # Maybe the user entered apmid instead of request_id
-                row = OnboardingRequest.query.filter_by(apmid=request_id).first()
-            if row:
-                row.status = status
-                apmid = row.apmid
-                db.session.commit()
-                log.info("admin/update-status PSQL OK — request_id=%s  apmid=%s  status=%s",
-                         request_id, apmid, status)
-            else:
-                log.warning("admin/update-status PSQL — request_id=%s not found", request_id)
-        except Exception as exc:
-            db.session.rollback()
-            log.error("admin/update-status PSQL failed — %s: %s", type(exc).__name__, exc)
-
-    # ── Sync to etn_onboarding state machine ─────────────────────────────────
-    if ETN_ONBOARDING_URL and apmid:
-        etn_status_map = {"done": "complete", "rejected": "cancelled"}
-        etn_target = etn_status_map.get(status)
-        if etn_target:
-            try:
-                etn_hdrs = {"Content-Type": "application/json"}
-                if ETN_ONBOARDING_TOKEN:
-                    etn_hdrs["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
-                etn_resp = http_client.post(
-                    f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/transition",
-                    json={
-                        "target_status": etn_target,
-                        "actor": session.get("username", "admin"),
-                        "action": f"admin_update_status_{status}",
-                    },
-                    headers=etn_hdrs,
-                    timeout=15,
-                )
-                if etn_resp.status_code in (200, 409):
-                    log.info("admin/update-status etn sync OK — apmid=%s → %s", apmid, etn_target)
-                else:
-                    log.warning("admin/update-status etn sync failed — %d: %s",
-                                etn_resp.status_code, etn_resp.text[:200])
-            except Exception as exc:
-                log.warning("admin/update-status etn sync error — %s", exc)
-
-    # ── Update Elasticsearch ──────────────────────────────────────────────────
-    try:
-        resp = session.post(
-            f"{base_url}/{index}/_update_by_query",
-            json=payload,
-            headers=headers,
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-        result  = resp.json()
-        updated = result.get("updated", 0)
-        if updated == 0:
-            log.warning("admin/update-status — request_id=%s not found", request_id)
-            return jsonify({"errors": [f"Request ID {request_id!r} not found"]}), 404
-        log.info("admin/update-status — request_id=%s  status=%s  updated=%d", request_id, status, updated)
-        _catalog_cache["data"] = None
-        _catalog_cache["ts"]   = 0.0
-        return jsonify({"request_id": request_id, "status": status, "updated": updated})
-    except Exception as exc:
-        log.error("admin/update-status failed — %s: %s", type(exc).__name__, exc)
-        return jsonify({"errors": [f"Failed to update status: {exc}"]}), 500
 
 
 @app.route("/cribl/health/es")
@@ -2915,6 +2795,36 @@ def api_catalog_delete(apm_id):
                 except Exception as exc:
                     action_entry["error"] = str(exc)
             results["actions"].append(action_entry)
+
+            # ── 1b. Remove matching Cribl destinations for this worker group ──
+            outputs_url = f"{root_url}/api/v1/m/{wg}/system/outputs"
+            try:
+                out_r = ws_sess.get(outputs_url, timeout=30)
+                if out_r.status_code == 200:
+                    out_items = out_r.json().get("items", [])
+                    for item in out_items:
+                        out_id = item.get("id", "")
+                        if apmid_lower in out_id.lower():
+                            dest_action = {
+                                "type": "cribl_destination", "ws": ws_name,
+                                "wg": wg, "dest_id": out_id, "dry_run": dry_run,
+                            }
+                            if not dry_run:
+                                try:
+                                    del_r = ws_sess.delete(
+                                        f"{outputs_url}/{out_id}", timeout=30,
+                                    )
+                                    dest_action["status"] = del_r.status_code
+                                    if del_r.status_code >= 400:
+                                        dest_action["error"] = del_r.text[:300]
+                                except Exception as exc:
+                                    dest_action["error"] = str(exc)
+                            results["actions"].append(dest_action)
+            except Exception as exc:
+                results["actions"].append({
+                    "type": "cribl_destinations_fetch", "ws": ws_name,
+                    "wg": wg, "error": str(exc),
+                })
 
     # ── 2. Remove ELK role_mappings + roles ───────────────────────────────────
     ent_cfg  = config.get("entitlement", {})
