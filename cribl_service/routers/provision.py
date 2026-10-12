@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from requests.exceptions import RequestException
 
 from ..deps import CriblClient, get_cribl_client
 
@@ -32,7 +33,7 @@ def _retry(fn, description: str, max_retries: int = MAX_RETRIES) -> Any:
             return fn()
         except HTTPException:
             raise  # 4xx errors are not retryable
-        except Exception as exc:
+        except (RequestException, TimeoutError, ConnectionError, OSError) as exc:
             last_exc = exc
             if attempt < max_retries - 1:
                 wait = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
@@ -89,7 +90,7 @@ def _install_pack_if_needed(
     return result
 
 
-@router.post("/provision")
+@router.post("/provision", status_code=201)
 def provision(
     worker_group: str,
     body: dict[str, Any] = Body(..., example={

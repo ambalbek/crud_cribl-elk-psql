@@ -115,6 +115,66 @@ def get_request(request_id):
     }), 200
 
 
+@requests_bp.route("/by-apm/<apm_id>/transition", methods=["POST"])
+@require_role("platform_admin")
+def transition_by_apm_id(apm_id):
+    """State transition by apm_id instead of UUID.
+
+    Looks up the onboarding request by apm_id, then delegates to the same
+    transition logic as the UUID-based endpoint.  Used by the portal to
+    advance the state machine after provisioning without knowing the UUID.
+
+    Accepts the same JSON body as the generic transition endpoint.
+    """
+    onboarding_req = OnboardingRequest.query.filter_by(apm_id=apm_id).first()
+    if not onboarding_req:
+        return jsonify({"error": f"No onboarding request with apm_id '{apm_id}'"}), 404
+
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    target_status_str = body.get("target_status")
+    if not target_status_str:
+        return jsonify({"error": "target_status is required"}), 400
+
+    try:
+        target_status = RequestStatus(target_status_str)
+    except ValueError:
+        valid = [s.value for s in RequestStatus]
+        return jsonify({"error": f"Invalid target_status '{target_status_str}'", "valid_statuses": valid}), 400
+
+    actor = body.get("actor", "system")
+    action = body.get("action")
+    metadata = body.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        return jsonify({"error": "metadata must be a dict"}), 400
+
+    try:
+        audit_entry = transition_request(
+            onboarding_req,
+            target_status,
+            actor=actor,
+            action=action,
+            metadata=metadata,
+        )
+        db.session.commit()
+    except InvalidTransitionError as exc:
+        return jsonify({"error": str(exc)}), 409
+
+    logger.info(
+        "Transition by apm_id: apm_id=%s request_id=%s %s -> %s actor=%s",
+        apm_id, onboarding_req.id, audit_entry.action, target_status.value, actor,
+    )
+
+    return jsonify({
+        "id": str(onboarding_req.id),
+        "apm_id": apm_id,
+        "status": onboarding_req.status.value,
+        "audit_id": str(audit_entry.id),
+    }), 200
+
+
 @requests_bp.route("/<uuid:request_id>/transition", methods=["POST"])
 @require_role("platform_admin")
 def generic_transition(request_id):

@@ -331,8 +331,7 @@ def admin_required(f):
         if session.get("role") != "admin":
             log.warning("Unauthorized admin access attempt by %s to %s",
                         session.get("username"), request.path)
-            return render_template("login.html",
-                                   error="You do not have permission to access this page."), 403
+            return redirect(url_for("login_page", next=request.path))
         return f(*args, **kwargs)
     return decorated
 
@@ -413,15 +412,19 @@ def es_index(doc: dict, config: dict) -> str:
 
 def portal_update_status_internal(request_id: str, status: str, config: dict) -> dict:
     """
-    Update the status of a portal request in PostgreSQL and Elasticsearch.
+    Update the status of a portal request in PostgreSQL, Elasticsearch,
+    and the etn_onboarding state machine.
     Used by cribl-pusher after a successful run to mark requests as done.
     """
+    apmid = None
+
     # ── Update PostgreSQL ─────────────────────────────────────────────────
     if _db_url:
         try:
             row = OnboardingRequest.query.filter_by(request_id=request_id).first()
             if row:
                 row.status = status
+                apmid = row.apmid
                 db.session.commit()
                 log.info("PSQL status update OK — request_id=%s  status=%s", request_id, status)
             else:
@@ -429,6 +432,33 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
         except Exception as exc:
             db.session.rollback()
             log.error("PSQL status update failed — %s: %s", type(exc).__name__, exc)
+
+    # ── Advance etn_onboarding state machine ─────────────────────────────
+    if ETN_ONBOARDING_URL and apmid and status == "done":
+        try:
+            headers = {"Content-Type": "application/json"}
+            if ETN_ONBOARDING_TOKEN:
+                headers["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+            etn_resp = http_client.post(
+                f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/transition",
+                json={
+                    "target_status": "delivery_complete",
+                    "actor": "cribl-pusher",
+                    "action": "provision_complete",
+                    "metadata": {"request_id": request_id},
+                },
+                headers=headers,
+                timeout=15,
+            )
+            if etn_resp.status_code == 200:
+                log.info("etn_onboarding transition OK — apmid=%s → delivery_complete", apmid)
+            elif etn_resp.status_code == 409:
+                log.info("etn_onboarding transition skipped — apmid=%s already past delivery_complete", apmid)
+            else:
+                log.warning("etn_onboarding transition failed — apmid=%s  %d: %s",
+                            apmid, etn_resp.status_code, etn_resp.text[:200])
+        except Exception as exc:
+            log.warning("etn_onboarding transition error — apmid=%s: %s", apmid, exc)
     ds       = config.get("datastream", {})
     base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
     index    = ds.get("index", "logs-cribl-onboarding-requests")
@@ -457,8 +487,15 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
     if not token and username:
         session.auth = (username, password)
 
+    # ES may store request_id as UUID (etn mode) or REQ-... (legacy).
+    # Use apmid for a reliable match when available.
+    if apmid:
+        es_query = {"term": {"apmid.keyword": apmid}}
+    else:
+        es_query = {"term": {"request_id.keyword": request_id}}
+
     payload = {
-        "query":  {"term": {"request_id.keyword": request_id}},
+        "query":  es_query,
         "script": {
             "source": "ctx._source.status = params.status",
             "lang": "painless",
@@ -476,8 +513,8 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
         if resp.status_code == 200:
             result  = resp.json()
             updated = result.get("updated", 0)
-            log.info("portal_update_status — request_id=%s  status=%s  updated=%d",
-                     request_id, status, updated)
+            log.info("portal_update_status — request_id=%s  apmid=%s  status=%s  updated=%d",
+                     request_id, apmid, status, updated)
             return {"ok": True, "updated": updated}
         else:
             log.warning("portal_update_status — %d %s", resp.status_code, resp.text[:200])
@@ -485,6 +522,10 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
     except Exception as exc:
         log.error("portal_update_status — failed: %s", exc)
         return {"ok": False, "error": str(exc)}
+    finally:
+        # Bust catalog cache so status changes are reflected immediately
+        _catalog_cache["data"] = None
+        _catalog_cache["ts"]   = 0.0
 
 
 # ── Entitlement helpers ───────────────────────────────────────────────────────
@@ -596,13 +637,14 @@ def _svc_get(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
     """
     GET from an internal microservice.  Returns (json_body, status_code).
     Raises RuntimeError if the service URL is not configured.
+    Accepts optional ``headers`` and ``verify`` kwargs.
     """
     if not base_url:
         raise RuntimeError("Service URL is not configured")
     url = base_url + path
-    # Merge extra headers without clobbering kwargs
     extra_hdrs = kwargs.pop("headers", None)
-    resp = http_client.get(url, timeout=120, headers=extra_hdrs, **kwargs)
+    verify = kwargs.pop("verify", True)
+    resp = http_client.get(url, timeout=120, headers=extra_hdrs, verify=verify, **kwargs)
     try:
         body = resp.json()
     except (ValueError, TypeError):
@@ -614,11 +656,14 @@ def _svc_post(base_url: str, path: str, **kwargs) -> tuple[dict, int]:
     """
     POST to an internal microservice.  Returns (json_body, status_code).
     Raises RuntimeError if the service URL is not configured.
+    Accepts optional ``headers`` and ``verify`` kwargs.
     """
     if not base_url:
         raise RuntimeError("Service URL is not configured")
     url = base_url + path
-    resp = http_client.post(url, timeout=120, **kwargs)
+    extra_headers = kwargs.pop("headers", None)
+    verify = kwargs.pop("verify", True)
+    resp = http_client.post(url, timeout=120, headers=extra_headers, verify=verify, **kwargs)
     try:
         body = resp.json()
     except (ValueError, TypeError):
@@ -655,8 +700,14 @@ def _cribl_base_and_headers(
 
     Resolution order:
     1. Explicit cribl_url/token/user/pass passed from the form
-    2. CRIBL_SERVICE_URL env var (internal microservice proxy — no auth needed)
-    3. config.json base_url + credentials
+    2. CRIBL_SERVICE_URL env var (internal microservice proxy)
+    3. config.json base_url + credentials (direct Cribl)
+
+    When using CRIBL_SERVICE_URL (2), callers should use cribl_service
+    paths (e.g. /api/v1/m/{wg}/destinations/{id}).  When falling through
+    to direct Cribl (3), callers must use Cribl's native paths
+    (e.g. /api/v1/m/{wg}/system/outputs/{id}).
+    Use ``_cribl_dest_path()`` helper to get the right path.
     """
     import base64
 
@@ -674,8 +725,15 @@ def _cribl_base_and_headers(
 
     headers: dict[str, str] = {}
 
-    # If using CRIBL_SERVICE_URL and no explicit creds, no auth needed (internal proxy)
-    if not cribl_url and CRIBL_SERVICE_URL and not token and not username:
+    # If using CRIBL_SERVICE_URL, forward creds as override headers so
+    # cribl_service can authenticate to Cribl on behalf of the caller.
+    if not cribl_url and CRIBL_SERVICE_URL:
+        if token:
+            headers["X-Cribl-Token"] = token
+        if username:
+            headers["X-Cribl-Username"] = username
+        if password:
+            headers["X-Cribl-Password"] = password
         return base_url, headers
 
     # Resolve credentials: form overrides → env vars → config.json fallback
@@ -713,6 +771,20 @@ def _cribl_base_and_headers(
             headers["Authorization"] = f"Basic {b64}"
 
     return base_url, headers
+
+
+def _cribl_dest_path(worker_group: str, dest_id: str = "") -> str:
+    """Return the correct destination API path depending on whether
+    we're routing through cribl_service or direct to Cribl.
+
+    cribl_service:  /api/v1/m/{wg}/destinations/{id}
+    direct Cribl:   /api/v1/m/{wg}/system/outputs/{id}
+    """
+    if CRIBL_SERVICE_URL:
+        base = f"/api/v1/m/{worker_group}/destinations"
+    else:
+        base = f"/api/v1/m/{worker_group}/system/outputs"
+    return f"{base}/{dest_id}" if dest_id else base
 
 
 # ── Command builders (for subprocess calls to CLI scripts) ─────────────────────
@@ -1126,6 +1198,8 @@ def portal_submit():
                 db.session.rollback()
                 log.warning("PSQL insert failed (non-fatal) — %s: %s", type(exc).__name__, exc)
 
+        _catalog_cache["data"] = None
+        _catalog_cache["ts"]   = 0.0
         return jsonify({"request_id": etn_request_id})
 
     # ── Fallback: direct insert (legacy mode when ETN_ONBOARDING_URL not set) ─
@@ -1209,6 +1283,8 @@ def portal_submit():
         log.error("ES index failed — %s: %s", type(exc).__name__, exc)
         return jsonify({"errors": [f"Failed to store request: {exc}"]}), 500
 
+    _catalog_cache["data"] = None
+    _catalog_cache["ts"]   = 0.0
     return jsonify({"request_id": request_id})
 
 
@@ -1225,6 +1301,7 @@ def portal_ldap_lookup():
         return jsonify({"error": "LDAP is not configured"}), 503
 
     from ldap3 import Server, Connection, SUBTREE, Tls
+    from ldap3.utils.conv import escape_filter_chars
     import ssl
 
     try:
@@ -1243,7 +1320,7 @@ def portal_ldap_lookup():
         return jsonify({"error": "LDAP connection failed"}), 503
 
     try:
-        search_filter = f"(sAMAccountName={lan_id})"
+        search_filter = f"(sAMAccountName={escape_filter_chars(lan_id)})"
         attrs = [
             "givenName", "sn", "displayName", "mail",
             "department", "title", "sAMAccountName",
@@ -1331,8 +1408,17 @@ def portal_admin_update_status():
     if not token and username:
         session.auth = (username, password)
 
+    # Search by request_id OR apmid — the user may enter either format
     payload = {
-        "query":  {"term": {"request_id.keyword": request_id}},
+        "query": {
+            "bool": {
+                "should": [
+                    {"term": {"request_id.keyword": request_id}},
+                    {"term": {"apmid.keyword": request_id}},
+                ],
+                "minimum_should_match": 1,
+            },
+        },
         "script": {
             "source": "ctx._source.status = params.status",
             "lang": "painless",
@@ -1341,18 +1427,54 @@ def portal_admin_update_status():
     }
 
     # ── Update PostgreSQL ────────────────────────────────────────────────────
+    # The user may enter either the REQ-... format (PSQL) or UUID (ES/etn).
+    # Try request_id first; if not found, search by apmid in case the input
+    # is an apmid, and also look up via the ES UUID embedded in request_id.
+    apmid = None
     if _db_url:
         try:
             row = OnboardingRequest.query.filter_by(request_id=request_id).first()
+            if not row:
+                # Maybe the user entered apmid instead of request_id
+                row = OnboardingRequest.query.filter_by(apmid=request_id).first()
             if row:
                 row.status = status
+                apmid = row.apmid
                 db.session.commit()
-                log.info("admin/update-status PSQL OK — request_id=%s  status=%s", request_id, status)
+                log.info("admin/update-status PSQL OK — request_id=%s  apmid=%s  status=%s",
+                         request_id, apmid, status)
             else:
                 log.warning("admin/update-status PSQL — request_id=%s not found", request_id)
         except Exception as exc:
             db.session.rollback()
             log.error("admin/update-status PSQL failed — %s: %s", type(exc).__name__, exc)
+
+    # ── Sync to etn_onboarding state machine ─────────────────────────────────
+    if ETN_ONBOARDING_URL and apmid:
+        etn_status_map = {"done": "complete", "rejected": "cancelled"}
+        etn_target = etn_status_map.get(status)
+        if etn_target:
+            try:
+                etn_hdrs = {"Content-Type": "application/json"}
+                if ETN_ONBOARDING_TOKEN:
+                    etn_hdrs["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+                etn_resp = http_client.post(
+                    f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/transition",
+                    json={
+                        "target_status": etn_target,
+                        "actor": session.get("username", "admin"),
+                        "action": f"admin_update_status_{status}",
+                    },
+                    headers=etn_hdrs,
+                    timeout=15,
+                )
+                if etn_resp.status_code in (200, 409):
+                    log.info("admin/update-status etn sync OK — apmid=%s → %s", apmid, etn_target)
+                else:
+                    log.warning("admin/update-status etn sync failed — %d: %s",
+                                etn_resp.status_code, etn_resp.text[:200])
+            except Exception as exc:
+                log.warning("admin/update-status etn sync error — %s", exc)
 
     # ── Update Elasticsearch ──────────────────────────────────────────────────
     try:
@@ -1369,6 +1491,8 @@ def portal_admin_update_status():
             log.warning("admin/update-status — request_id=%s not found", request_id)
             return jsonify({"errors": [f"Request ID {request_id!r} not found"]}), 404
         log.info("admin/update-status — request_id=%s  status=%s  updated=%d", request_id, status, updated)
+        _catalog_cache["data"] = None
+        _catalog_cache["ts"]   = 0.0
         return jsonify({"request_id": request_id, "status": status, "updated": updated})
     except Exception as exc:
         log.error("admin/update-status failed — %s: %s", type(exc).__name__, exc)
@@ -1376,6 +1500,7 @@ def portal_admin_update_status():
 
 
 @app.route("/cribl/health/es")
+@login_required
 def health_es():
     try:
         config  = load_config()
@@ -1410,6 +1535,7 @@ def health_es():
 
 
 @app.route("/cribl/health/elk")
+@login_required
 def health_elk():
     """Check local ELK stack health (Elasticsearch, Logstash, Kibana)."""
     tracer = trace.get_tracer("cribl-framework")
@@ -1666,6 +1792,19 @@ def run_pusher():
         pack_id      = (form.get("pack") or "").strip()
         pack_version = (form.get("pack_version") or "").strip()
 
+        # Forward form credential overrides to cribl_service so it can
+        # authenticate to Cribl on behalf of the user.
+        cred_headers: dict[str, str] = {}
+        form_token    = form.get("token", "").strip()
+        form_username = form.get("username", "").strip()
+        form_password = form.get("password", "").strip()
+        if form_token:
+            cred_headers["X-Cribl-Token"] = form_token
+        if form_username:
+            cred_headers["X-Cribl-Username"] = form_username
+        if form_password:
+            cred_headers["X-Cribl-Password"] = form_password
+
         for wg in worker_groups:
             payload = {
                 "apps":             apps_payload,
@@ -1687,6 +1826,7 @@ def run_pusher():
                     CRIBL_SERVICE_URL,
                     f"/api/v1/m/{wg}/provision",
                     json=payload,
+                    headers=cred_headers,
                 )
             except Exception as exc:
                 log.error("cribl_service provision failed wg=%s: %s", wg, exc)
@@ -1775,7 +1915,7 @@ def get_destination(worker_group: str, destination_id: str):
         )
         body, status = _svc_get(
             base,
-            f"/api/v1/m/{worker_group}/destinations/{destination_id}",
+            _cribl_dest_path(worker_group, destination_id),
             headers=hdrs,
             verify=not skip_ssl,
         )
@@ -1822,10 +1962,23 @@ def patch_destination():
             password=data.get("password", ""),
             skip_ssl=skip_ssl,
         )
+        # Cribl requires the full object on PATCH — fetch current, merge fields
+        current, get_st = _svc_get(
+            base,
+            _cribl_dest_path(worker_group, destination_id),
+            headers=hdrs,
+            verify=not skip_ssl,
+        )
+        if get_st >= 400:
+            return jsonify({"errors": [f"Failed to fetch destination: {current}"]}), get_st
+        # Unwrap if needed (cribl_service returns {items:[...]} or direct object)
+        if isinstance(current, dict) and "items" in current:
+            current = current["items"][0] if current["items"] else current
+        merged = {**current, **patch_fields}
         body, status = _svc_patch(
             base,
-            f"/api/v1/m/{worker_group}/destinations/{destination_id}",
-            json=patch_fields,
+            _cribl_dest_path(worker_group, destination_id),
+            json=merged,
             headers=hdrs,
             verify=not skip_ssl,
         )
@@ -1856,7 +2009,7 @@ def list_destinations(worker_group: str):
         )
         body, status = _svc_get(
             base,
-            f"/api/v1/m/{worker_group}/destinations",
+            _cribl_dest_path(worker_group),
             headers=hdrs,
             verify=not skip_ssl,
         )
@@ -1911,7 +2064,7 @@ def bulk_patch_destinations():
     try:
         all_dests, status = _svc_get(
             base,
-            f"/api/v1/m/{worker_group}/destinations",
+            _cribl_dest_path(worker_group),
             headers=hdrs,
             verify=not skip_ssl,
         )
@@ -1941,15 +2094,22 @@ def bulk_patch_destinations():
     results = []
     for dest in items:
         dest_id = dest.get("id")
+        # Cribl requires the full object on PATCH — merge patch_fields
+        # into the existing destination so required fields (id, type, …)
+        # are always present.
+        merged = {**dest, **patch_fields}
         try:
             body, st = _svc_patch(
                 base,
-                f"/api/v1/m/{worker_group}/destinations/{dest_id}",
-                json=patch_fields,
+                _cribl_dest_path(worker_group, dest_id),
+                json=merged,
                 headers=hdrs,
                 verify=not skip_ssl,
             )
-            results.append({"id": dest_id, "status": st, "ok": st < 400})
+            entry = {"id": dest_id, "status": st, "ok": st < 400}
+            if st >= 400:
+                entry["error"] = body.get("detail", body.get("message", str(body))) if isinstance(body, dict) else str(body)
+            results.append(entry)
         except Exception as exc:
             log.error("bulk-patch failed for %s: %s", dest_id, exc)
             results.append({"id": dest_id, "status": 500, "ok": False, "error": str(exc)})
@@ -2087,6 +2247,18 @@ def run_role_rm():
             except Exception as exc:
                 return jsonify({"errors": [f"Cribl config error: {exc}"]}), 500
 
+            # Forward form credential overrides to cribl_service
+            t2_cred_headers: dict[str, str] = {}
+            t2_cribl_token    = form.get("cribl_token", "").strip()
+            t2_cribl_username = form.get("cribl_username", "").strip()
+            t2_cribl_password = form.get("cribl_password", "").strip()
+            if t2_cribl_token:
+                t2_cred_headers["X-Cribl-Token"] = t2_cribl_token
+            if t2_cribl_username:
+                t2_cred_headers["X-Cribl-Username"] = t2_cribl_username
+            if t2_cribl_password:
+                t2_cred_headers["X-Cribl-Password"] = t2_cribl_password
+
             apps_payload = [{"apmid": apmid, "app_name": app_name} for apmid, app_name in bulk_apps]
             cribl_payload = {
                 "apps": apps_payload, "route_template": route_tmpl,
@@ -2103,7 +2275,8 @@ def run_role_rm():
                     "source": "registry",
                 }
             try:
-                cbody, cstatus = _svc_post(CRIBL_SERVICE_URL, f"/api/v1/m/{wg}/provision", json=cribl_payload)
+                cbody, cstatus = _svc_post(CRIBL_SERVICE_URL, f"/api/v1/m/{wg}/provision",
+                                           json=cribl_payload, headers=t2_cred_headers)
             except Exception as exc:
                 cbody, cstatus = {"error": str(exc)}, 500
 
@@ -2277,43 +2450,40 @@ def _fetch_ilm_tier_stateless(
 
 
 def _build_catalog(config: dict) -> list:
-    """Aggregate catalog data from Cribl + Elasticsearch into per-app records."""
+    """Aggregate catalog data from PSQL + Cribl routes + ELK role mappings."""
     log.info("catalog — starting build")
 
-    # ── 1. Onboarding docs (latest 500, dedup by apmid) ───────────────────────
     ds      = config.get("datastream", {})
-    index   = ds.get("index",   "cribl-onboarding-requests")
     timeout = ds.get("timeout", 30)
     es_sess, es_base_url, es_headers = _make_es_session_for_catalog(ds)
 
-    docs = []
-    if es_base_url:
-        try:
-            resp = es_sess.post(
-                f"{es_base_url}/{index}/_search",
-                json={
-                    "size": 500,
-                    "sort": [{"@timestamp": {"order": "desc"}}],
-                    "query": {"match_all": {}},
-                },
-                headers=es_headers,
-                timeout=timeout,
-            )
-            resp.raise_for_status()
-            docs = [h["_source"] for h in resp.json().get("hits", {}).get("hits", [])]
-            log.info("catalog — fetched %d onboarding docs", len(docs))
-        except Exception as exc:
-            log.warning("catalog — onboarding fetch failed: %s", exc)
-
-    # Deduplicate: docs are sorted desc by timestamp, so first occurrence = latest
+    # ── 1. Onboarding docs from PostgreSQL (source of truth) ─────────────────
     seen: dict = {}
-    for doc in docs:
-        apmid = (doc.get("apmid") or "").strip()
-        if apmid and apmid not in seen:
-            seen[apmid] = doc
+    if _db_url:
+        try:
+            rows = OnboardingRequest.query.order_by(OnboardingRequest.id.desc()).all()
+            for row in rows:
+                if row.apmid and row.apmid not in seen:
+                    seen[row.apmid] = {
+                        "apmid":              row.apmid,
+                        "appname":            row.appname,
+                        "request_id":         row.request_id,
+                        "region":             row.region,
+                        "status":             row.status,
+                        "lan_id":             row.lan_id,
+                        "@timestamp":         row.timestamp.isoformat() if row.timestamp else "",
+                        "requester_name":     row.requester_name,
+                        "entitlement_groups": row.entitlement_groups or [],
+                        "data_type":          row.data_type,
+                        "log_types":          row.log_types or [],
+                        "log_destinations":   row.log_destinations or [],
+                    }
+            log.info("catalog — loaded %d apps from PSQL", len(seen))
+        except Exception as exc:
+            log.warning("catalog — PSQL fetch failed: %s", exc)
 
     if not seen:
-        log.info("catalog — no apps in onboarding index; returning empty catalog")
+        log.info("catalog — no apps in PSQL; returning empty catalog")
         return []
 
     # ── 2. ELK role mappings from all entitlement clusters ────────────────────
@@ -2335,6 +2505,7 @@ def _build_catalog(config: dict) -> list:
     }
     creds_global = config.get("credentials", {})
     cribl_routes_cache: dict = {}  # (ws_name, wg) -> routes_obj
+    _catalog_auth_cache: dict[str, tuple[http_client.Session, str]] = {}
 
     for ws_name, ws_cfg in workspaces.items():
         worker_groups = ws_cfg.get("worker_groups", [])
@@ -2348,36 +2519,45 @@ def _build_catalog(config: dict) -> list:
         ws_user  = (ws_cfg.get("username", "") or creds_global.get("username", "")).strip()
         ws_pass  = (ws_cfg.get("password", "") or creds_global.get("password", "")).strip()
 
-        ws_sess = http_client.Session()
-        ws_sess.verify = not skip_ssl
-        if skip_ssl:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        # Reuse session + token for the same base URL to avoid 429 rate limiting
+        cache_key = f"{root_url}|{ws_user}"
+        if cache_key in _catalog_auth_cache:
+            ws_sess, cribl_token = _catalog_auth_cache[cache_key]
+        else:
+            ws_sess = http_client.Session()
+            ws_sess.verify = not skip_ssl
+            if skip_ssl:
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-        cribl_token = ws_token
-        if not cribl_token and ws_user:
-            try:
-                auth_r = ws_sess.post(
-                    f"{root_url}/api/v1/auth/login",
-                    json={"username": ws_user, "password": ws_pass},
-                    headers={"Content-Type": "application/json", "Accept": "application/json"},
-                    timeout=30,
-                )
-                if auth_r.status_code == 200:
-                    cribl_token = auth_r.json().get("token", "")
-                else:
-                    log.warning("catalog — Cribl auth failed ws=%s: %d", ws_name, auth_r.status_code)
+            cribl_token = ws_token
+            if not cribl_token and ws_user:
+                try:
+                    auth_r = ws_sess.post(
+                        f"{root_url}/api/v1/auth/login",
+                        json={"username": ws_user, "password": ws_pass},
+                        headers={"Content-Type": "application/json", "Accept": "application/json"},
+                        timeout=30,
+                    )
+                    if auth_r.status_code == 200:
+                        cribl_token = auth_r.json().get("token", "")
+                    else:
+                        log.warning("catalog — Cribl auth failed ws=%s: %d", ws_name, auth_r.status_code)
+                        continue
+                except Exception as exc:
+                    log.warning("catalog — Cribl auth error ws=%s: %s", ws_name, exc)
                     continue
-            except Exception as exc:
-                log.warning("catalog — Cribl auth error ws=%s: %s", ws_name, exc)
-                continue
 
-        if cribl_token:
-            ws_sess.headers.update({"Authorization": f"Bearer {cribl_token}"})
+            if cribl_token:
+                ws_sess.headers.update({"Authorization": f"Bearer {cribl_token}"})
+            _catalog_auth_cache[cache_key] = (ws_sess, cribl_token)
 
         for wg in worker_groups:
             url = f"{root_url}/api/v1/m/{wg}/routes/{routes_table}"
             try:
                 r = ws_sess.get(url, timeout=30)
+                if r.status_code == 404:
+                    log.debug("catalog — wg %s not found in ws %s, skipping", wg, ws_name)
+                    continue
                 if r.status_code == 200:
                     cribl_routes_cache[(ws_name, wg)] = r.json()
                     log.info("catalog — routes fetched ws=%s wg=%s", ws_name, wg)
@@ -2495,13 +2675,27 @@ def catalog_page():
     return render_template("catalog.html")
 
 
+@app.route("/cribl/api/catalog/refresh", methods=["POST"])
+@admin_required
+def api_catalog_refresh():
+    """Bust the catalog cache and force a rebuild on next request."""
+    with _catalog_cache_lock:
+        _catalog_cache["data"] = None
+        _catalog_cache["ts"]   = 0.0
+    log.info("api/catalog/refresh — cache cleared by %s", session.get("username"))
+    return jsonify({"ok": True, "message": "Catalog cache cleared"})
+
+
 @app.route("/cribl/api/catalog")
 @login_required
 def api_catalog():
+    # ?refresh=true busts the cache inline
+    force_refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
     now = time.time()
     with _catalog_cache_lock:
         if (
-            _catalog_cache["data"] is not None
+            not force_refresh
+            and _catalog_cache["data"] is not None
             and (now - _catalog_cache["ts"]) < _CATALOG_CACHE_TTL
         ):
             log.info("api/catalog — cache hit (age=%.0fs)", now - _catalog_cache["ts"])
@@ -2526,11 +2720,23 @@ def api_catalog():
 @app.route("/cribl/api/onboarding-requests")
 @login_required
 def api_onboarding_requests():
-    """Return all onboarding requests, merging etn_onboarding service + local DB."""
+    """Return all onboarding requests. Local PSQL is the primary source;
+    etn_onboarding supplements records that are only in the state machine."""
     results = []
     seen_apms = set()
 
-    # 1. Fetch from etn_onboarding service (source of truth)
+    # 1. Local PostgreSQL first (portal's own table — reflects pusher/admin updates)
+    if _db_url:
+        try:
+            rows = OnboardingRequest.query.order_by(OnboardingRequest.id.desc()).all()
+            for r in rows:
+                seen_apms.add(r.apmid)
+                d = r.to_dict()
+                results.append(d)
+        except Exception as exc:
+            log.warning("local DB requests fetch failed: %s", exc)
+
+    # 2. Supplement from etn_onboarding (records not in local PSQL)
     if ETN_ONBOARDING_URL:
         try:
             headers = {"Content-Type": "application/json"}
@@ -2543,50 +2749,39 @@ def api_onboarding_requests():
             )
             if resp.status_code < 400:
                 for r in resp.json():
-                    seen_apms.add(r.get("apm_id"))
-                    form_data = r.get("form_data") or {}
-                    results.append({
-                        "req_id":           r.get("id", ""),
-                        "apm":              r.get("apm_id", ""),
-                        "name":             r.get("app_name", ""),
-                        "status":           r.get("status", ""),
-                        "lan_id":           r.get("lan_id", ""),
-                        "first_name":       r.get("first_name", ""),
-                        "last_name":        r.get("last_name", ""),
-                        "submitted_by":     r.get("requestor_name", ""),
-                        "requestor_email":  r.get("requestor_email", ""),
-                        "team":             r.get("team", ""),
-                        "app_emails":       r.get("app_emails", []),
-                        "ays_group":        form_data.get("ays_group", ""),
-                        "environment":      r.get("environments", []),
-                        "region":           r.get("region", ""),
-                        "data_type":        r.get("data_type", ""),
-                        "log_destinations": r.get("log_destinations", []),
-                        "log_types":        r.get("log_types", []),
-                        "ilm_tier":         r.get("ilm_tier", ""),
-                        "entitlements":     r.get("entitlement_groups", []),
-                        "elk_capacity":     form_data.get("elk_capacity"),
-                        "pack_id":          r.get("pack_id", ""),
-                        "pack_version":     r.get("pack_version", ""),
-                        "storage_container": r.get("storage_container", ""),
-                        "date":             r.get("created_at", ""),
-                        "updated_at":       r.get("updated_at", ""),
-                    })
+                    if r.get("apm_id") not in seen_apms:
+                        form_data = r.get("form_data") or {}
+                        results.append({
+                            "req_id":           r.get("id", ""),
+                            "apm":              r.get("apm_id", ""),
+                            "name":             r.get("app_name", ""),
+                            "status":           r.get("status", ""),
+                            "lan_id":           r.get("lan_id", ""),
+                            "first_name":       r.get("first_name", ""),
+                            "last_name":        r.get("last_name", ""),
+                            "submitted_by":     r.get("requestor_name", ""),
+                            "requestor_email":  r.get("requestor_email", ""),
+                            "team":             r.get("team", ""),
+                            "app_emails":       r.get("app_emails", []),
+                            "ays_group":        form_data.get("ays_group", ""),
+                            "environment":      r.get("environments", []),
+                            "region":           r.get("region", ""),
+                            "data_type":        r.get("data_type", ""),
+                            "log_destinations": r.get("log_destinations", []),
+                            "log_types":        r.get("log_types", []),
+                            "ilm_tier":         r.get("ilm_tier", ""),
+                            "entitlements":     r.get("entitlement_groups", []),
+                            "elk_capacity":     form_data.get("elk_capacity"),
+                            "pack_id":          r.get("pack_id", ""),
+                            "pack_version":     r.get("pack_version", ""),
+                            "storage_container": r.get("storage_container", ""),
+                            "date":             r.get("created_at", ""),
+                            "updated_at":       r.get("updated_at", ""),
+                        })
             else:
                 log.warning("etn_onboarding /api/requests/ returned %d", resp.status_code)
         except Exception as exc:
             log.warning("etn_onboarding requests fetch failed: %s", exc)
-
-    # 2. Also fetch from local DB (legacy records)
-    if _db_url:
-        try:
-            rows = OnboardingRequest.query.order_by(OnboardingRequest.id.desc()).all()
-            for r in rows:
-                if r.apmid not in seen_apms:
-                    d = r.to_dict()
-                    results.append(d)
-        except Exception as exc:
-            log.warning("local DB requests fetch failed: %s", exc)
 
     return jsonify(results)
 
@@ -2632,6 +2827,9 @@ def api_catalog_delete(apm_id):
     creds_global = config.get("credentials", {})
 
     # ── 1. Remove Cribl routes ────────────────────────────────────────────────
+    # Cache auth tokens per base URL to avoid 429 rate limiting
+    _auth_cache: dict[str, tuple[http_client.Session, str]] = {}
+
     for ws_name, ws_cfg in workspaces.items():
         worker_groups = ws_cfg.get("worker_groups", [])
         routes_table  = ws_cfg.get("routes_table", "default")
@@ -2644,39 +2842,49 @@ def api_catalog_delete(apm_id):
         ws_user  = (ws_cfg.get("username", "") or creds_global.get("username", "")).strip()
         ws_pass  = (ws_cfg.get("password", "") or creds_global.get("password", "")).strip()
 
-        ws_sess = http_client.Session()
-        ws_sess.verify = not skip_ssl
-        if skip_ssl:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        # Reuse session + token for the same base URL to avoid 429
+        cache_key = f"{root_url}|{ws_user}"
+        if cache_key in _auth_cache:
+            ws_sess, cribl_token = _auth_cache[cache_key]
+        else:
+            ws_sess = http_client.Session()
+            ws_sess.verify = not skip_ssl
+            if skip_ssl:
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-        cribl_token = ws_token
-        if not cribl_token and ws_user:
-            try:
-                auth_r = ws_sess.post(
-                    f"{root_url}/api/v1/auth/login",
-                    json={"username": ws_user, "password": ws_pass},
-                    headers={"Content-Type": "application/json", "Accept": "application/json"},
-                    timeout=30,
-                )
-                if auth_r.status_code == 200:
-                    cribl_token = auth_r.json().get("token", "")
-                else:
-                    results["actions"].append({
-                        "type": "cribl_auth", "ws": ws_name,
-                        "error": f"Auth failed: {auth_r.status_code}",
-                    })
+            cribl_token = ws_token
+            if not cribl_token and ws_user:
+                try:
+                    auth_r = ws_sess.post(
+                        f"{root_url}/api/v1/auth/login",
+                        json={"username": ws_user, "password": ws_pass},
+                        headers={"Content-Type": "application/json", "Accept": "application/json"},
+                        timeout=30,
+                    )
+                    if auth_r.status_code == 200:
+                        cribl_token = auth_r.json().get("token", "")
+                    else:
+                        results["actions"].append({
+                            "type": "cribl_auth", "ws": ws_name,
+                            "error": f"Auth failed: {auth_r.status_code}",
+                        })
+                        continue
+                except Exception as exc:
+                    results["actions"].append({"type": "cribl_auth", "ws": ws_name, "error": str(exc)})
                     continue
-            except Exception as exc:
-                results["actions"].append({"type": "cribl_auth", "ws": ws_name, "error": str(exc)})
-                continue
 
-        if cribl_token:
-            ws_sess.headers.update({"Authorization": f"Bearer {cribl_token}"})
+            if cribl_token:
+                ws_sess.headers.update({"Authorization": f"Bearer {cribl_token}"})
+            _auth_cache[cache_key] = (ws_sess, cribl_token)
 
         for wg in worker_groups:
             routes_url = f"{root_url}/api/v1/m/{wg}/routes/{routes_table}"
             try:
                 get_r = ws_sess.get(routes_url, timeout=30)
+                if get_r.status_code == 404:
+                    # Worker group or routes table doesn't exist — nothing to clean up
+                    log.debug("catalog DELETE — wg %s not found in ws %s, skipping", wg, ws_name)
+                    continue
                 get_r.raise_for_status()
                 routes_obj = get_r.json()
             except Exception as exc:
@@ -2773,7 +2981,57 @@ def api_catalog_delete(apm_id):
                         role_action["error"] = str(exc)
                 results["actions"].append(role_action)
 
-    # ── 3. Mark as offboarded in Elasticsearch ────────────────────────────────
+    # ── 3. Mark as offboarded in PostgreSQL ──────────────────────────────────
+    if not dry_run and _db_url:
+        try:
+            row = OnboardingRequest.query.filter_by(apmid=apm_id).first()
+            if row:
+                row.status = "offboarded"
+                db.session.commit()
+                log.info("catalog DELETE — PSQL status set to offboarded for apmid=%s", apm_id)
+                results["actions"].append({"type": "psql_status_update", "status": 200, "dry_run": False})
+            else:
+                log.info("catalog DELETE — apmid=%s not found in PSQL (may be etn-only)", apm_id)
+        except Exception as exc:
+            db.session.rollback()
+            log.error("catalog DELETE — PSQL update failed: %s", exc)
+            results["actions"].append({"type": "psql_status_update", "error": str(exc)})
+
+    # ── 4. Transition etn_onboarding to cancelled ────────────────────────────
+    if not dry_run and ETN_ONBOARDING_URL:
+        try:
+            etn_hdrs = {"Content-Type": "application/json"}
+            if ETN_ONBOARDING_TOKEN:
+                etn_hdrs["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+            etn_resp = http_client.post(
+                f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apm_id}/transition",
+                json={
+                    "target_status": "cancelled",
+                    "actor": session.get("username", "system"),
+                    "action": "offboard",
+                    "metadata": {"reason": "offboarded via catalog"},
+                },
+                headers=etn_hdrs,
+                timeout=15,
+            )
+            etn_action = {"type": "etn_status_update", "dry_run": False}
+            if etn_resp.status_code == 200:
+                etn_action["status"] = 200
+                log.info("catalog DELETE — etn_onboarding transitioned to cancelled for apmid=%s", apm_id)
+            elif etn_resp.status_code == 409:
+                etn_action["status"] = 409
+                etn_action["note"] = "already cancelled or terminal"
+            elif etn_resp.status_code == 404:
+                etn_action["status"] = 404
+                etn_action["note"] = "not found in etn_onboarding"
+            else:
+                etn_action["status"] = etn_resp.status_code
+                etn_action["error"] = etn_resp.text[:200]
+            results["actions"].append(etn_action)
+        except Exception as exc:
+            results["actions"].append({"type": "etn_status_update", "error": str(exc)})
+
+    # ── 5. Mark as offboarded in Elasticsearch ────────────────────────────────
     es_action = {"type": "es_status_update", "dry_run": dry_run}
     if not dry_run:
         ds            = config.get("datastream", {})
@@ -2860,6 +3118,18 @@ def cribl_run():
         except Exception as exc:
             return jsonify({"errors": [f"Config error: {exc}"]}), 500
 
+        # Forward credential overrides from the request body
+        run_cred_headers: dict[str, str] = {}
+        run_token = (data.get("token") or "").strip()
+        run_user  = (data.get("username") or "").strip()
+        run_pass  = (data.get("password") or "").strip()
+        if run_token:
+            run_cred_headers["X-Cribl-Token"] = run_token
+        if run_user:
+            run_cred_headers["X-Cribl-Username"] = run_user
+        if run_pass:
+            run_cred_headers["X-Cribl-Password"] = run_pass
+
         for wg in worker_groups:
             payload = {
                 "apps": apps_payload,
@@ -2869,7 +3139,8 @@ def cribl_run():
             }
             try:
                 body, status = _svc_post(
-                    CRIBL_SERVICE_URL, f"/api/v1/m/{wg}/provision", json=payload
+                    CRIBL_SERVICE_URL, f"/api/v1/m/{wg}/provision",
+                    json=payload, headers=run_cred_headers,
                 )
             except Exception as exc:
                 body, status = {"error": str(exc)}, 500
@@ -2896,9 +3167,60 @@ def cribl_run():
             if rc:
                 last_rc = rc
 
+    portal_result = None
     if last_rc == 0 and not dry_run:
         _catalog_cache["data"] = None
         _catalog_cache["ts"]   = 0.0
+
+        # Update status in PSQL
+        if _db_url:
+            try:
+                row = OnboardingRequest.query.filter_by(apmid=apmid).first()
+                if row:
+                    row.status = "done"
+                    db.session.commit()
+                    log.info("cribl/run — PSQL status set to done for apmid=%s", apmid)
+            except Exception as exc:
+                db.session.rollback()
+                log.warning("cribl/run — PSQL update failed: %s", exc)
+
+        # Update ES
+        try:
+            config_ds = config.get("datastream", {})
+            es_sess, es_base, es_hdrs = _make_es_session_for_catalog(config_ds)
+            if es_base:
+                es_idx = config_ds.get("index", "cribl-onboarding-requests")
+                es_sess.post(
+                    f"{es_base}/{es_idx}/_update_by_query",
+                    json={
+                        "query": {"term": {"apmid.keyword": apmid}},
+                        "script": {"source": "ctx._source.status = 'done'", "lang": "painless"},
+                    },
+                    headers=es_hdrs,
+                    timeout=30,
+                )
+                log.info("cribl/run — ES status set to done for apmid=%s", apmid)
+        except Exception as exc:
+            log.warning("cribl/run — ES update failed: %s", exc)
+
+        # Advance etn_onboarding state machine
+        if ETN_ONBOARDING_URL:
+            try:
+                etn_hdrs = {"Content-Type": "application/json"}
+                if ETN_ONBOARDING_TOKEN:
+                    etn_hdrs["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+                http_client.post(
+                    f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/transition",
+                    json={
+                        "target_status": "delivery_complete",
+                        "actor": "cribl-run",
+                        "action": "re_onboard_complete",
+                    },
+                    headers=etn_hdrs,
+                    timeout=15,
+                )
+            except Exception as exc:
+                log.warning("cribl/run — etn_onboarding sync failed: %s", exc)
 
     return jsonify({"output": all_output.strip(), "returncode": last_rc})
 

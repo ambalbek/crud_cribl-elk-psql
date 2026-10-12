@@ -1,0 +1,133 @@
+# ── ARO Prod Environment Values Override ─────────────────────────────────────
+# Usage:
+#   helm upgrade --install cribl ./helm/cribl-framework \
+#     -f helm/cribl-framework/values-aro-prod.yaml \
+#     -n appXXXXXXXX-cribl-elk-psql-prod
+#
+# Replace all <placeholders> before deploying.
+
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - name: nexus-pull-secret
+  logLevel: WARNING
+  logFormat: json
+  otlpEndpoint: ""
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: null
+    runAsGroup: null
+    fsGroup: null
+    seccompProfile:
+      type: RuntimeDefault
+
+# ── Images (Nexus — pinned tags, never 'latest') ────────────────────────────
+framework:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/cribl-framework
+    tag: "<pinned-version>"
+  secretKey: "<generate-random-32-char-string>"
+  adminUsername: "<admin-username>"
+  adminPassword: "<admin-password>"
+  etnOnboardingToken: "<generate-random-32-char-string>"
+  route:
+    enabled: true
+    host: ""
+    tlsTermination: edge
+  ingress:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    limits:
+      cpu: "2"
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+criblService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: <nexus-host>:<port>/cribl-service
+    tag: "<pinned-version>"
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    limits:
+      cpu: "1"
+      memory: 768Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+eceService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: <nexus-host>:<port>/ece-service
+    tag: "<pinned-version>"
+  resources:
+    limits:
+      cpu: "1"
+      memory: 768Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+etnOnboarding:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: <nexus-host>:<port>/etn-onboarding
+    tag: "<pinned-version>"
+  secretKey: "<generate-random-32-char-string>"
+  migrationJob:
+    enabled: true
+  resources:
+    limits:
+      cpu: "1"
+      memory: 768Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# ── External Services ────────────────────────────────────────────────────────
+external:
+  cribl:
+    baseUrl: "<cribl-stream-url>:9000"
+    username: "<cribl-username>"
+    password: "<cribl-password>"
+    skipSsl: "false"
+
+  elasticsearch:
+    datastreamUrl: "<elasticsearch-url>:9200"
+    datastreamUsername: "<es-username>"
+    datastreamPassword: "<es-password>"
+
+  entEsClusters: ""   # JSON array, e.g. '[{"url":"https://...","token":"..."}]'
+
+  ece:
+    esUrl: "<es-nonprod-url>"
+    esUsername: "<es-nonprod-user>"
+    esPassword: "<es-nonprod-pass>"
+    esUrlProd: "<es-prod-url>"
+    esTokenProd: "<es-prod-token>"
+    esUsernameProd: "<es-prod-user>"
+    esPasswordProd: "<es-prod-pass>"
+    kibanaUrl: "<kibana-url>"
+    kibanaUsername: "<kibana-user>"
+    kibanaPassword: "<kibana-pass>"
+    skipSsl: "false"
+
+  postgres:
+    frameworkDatabaseUrl: "postgresql://<user>:<pass>@<pg-host>:5432/cribl_framework"
+    etnDatabaseUrl: "postgresql://<user>:<pass>@<pg-host>:5432/etn_onboarding"
+
+networkPolicy:
+  enabled: true

@@ -5,13 +5,14 @@ services:
     restart: unless-stopped
     environment:
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
     ports:
       - "0.0.0.0:9200:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
       - ./elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf -u elastic:MxrKcKT=0AedtIyI8O6y http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf -u elastic:${ELASTIC_PASSWORD:-changeme} http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -87,7 +88,7 @@ services:
       - DATABASE_URL=postgresql://etn_user:etn_pass@etn_postgres:5432/cribl_framework
       - ES_DATASTREAM_URL=http://elasticsearch:9200
       - ES_DATASTREAM_USERNAME=elastic
-      - ES_DATASTREAM_PASSWORD=MxrKcKT=0AedtIyI8O6y
+      - ES_DATASTREAM_PASSWORD=${ELASTIC_PASSWORD:-changeme}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://apm-server:8200}
       - CRIBL_SERVICE_URL=http://cribl_service:8001
       - ECE_SERVICE_URL=http://ece_service:8002

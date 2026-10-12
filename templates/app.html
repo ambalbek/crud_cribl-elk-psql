@@ -1086,7 +1086,19 @@ async function submitPusher() {
         ).join('');
       }
       outputEl.textContent = data.output || '(no output)';
+      /* If cribl_service returned a 401 (missing credentials), auto-expand
+         the Credentials Override section and show a helpful message. */
+      if (data.results && data.results.some(r =>
+            r.status === 401 || (r.result && r.result.detail && r.result.detail.includes('credentials')))) {
+        const details = document.querySelector('#tab1 details');
+        if (details) details.open = true;
+        statusEl.innerHTML = '<div class="alert alert-error">Cribl credentials are required. '
+          + 'Enter a Bearer Token or Username / Password in the Credentials Override section below and retry.</div>';
+      }
       renderStatus('t1_status', data.returncode);
+      if (data.returncode === 0 && !data.portal_update && !document.getElementById('t1_request_id').value.trim()) {
+        statusEl.innerHTML += '<div class="alert alert-warning">Provision succeeded but portal status was not updated — enter a Request ID above to auto-update status on success.</div>';
+      }
       if (data.portal_update) {
         const pu = data.portal_update;
         if (pu.ok) {

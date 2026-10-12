@@ -44,7 +44,12 @@ def _raise_for(r: httpx.Response, context: str = "") -> Any:
             status_code=r.status_code,
             detail=f"{label}{r.text[:400]}",
         )
-    return r.json() if r.content else {}
+    if not r.content:
+        return {}
+    try:
+        return r.json()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=502, detail=f"Invalid JSON from Cribl API: {r.text[:200]}")
 
 
 def _snapshot_dir(table: str) -> Path:

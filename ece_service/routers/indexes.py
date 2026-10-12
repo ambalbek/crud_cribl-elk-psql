@@ -7,6 +7,7 @@ Endpoints:
   PUT    /api/v1/indexes/{name}                 — create / update index
   DELETE /api/v1/indexes/{name}                 — delete index
   PUT    /api/v1/indexes/templates/{name}       — create / update index template
+  DELETE /api/v1/indexes/templates/{name}       — delete index template
 
 Query param ?target=nonprod|prod selects which ES cluster to hit.
 """
@@ -48,6 +49,16 @@ def put_index_template(
 ) -> dict[str, Any]:
     """Create or update an index template."""
     return client.put_index_template(name, body, target)
+
+
+@router.delete("/templates/{name}")
+def delete_index_template(
+    name: str,
+    target: str = Query(default="nonprod", pattern="^(nonprod|prod)$"),
+    client: ECEClient = Depends(get_ece_client),
+) -> dict[str, Any]:
+    """Delete an index template."""
+    return client.delete_index_template(name, target)
 
 
 @router.get("/{name}")

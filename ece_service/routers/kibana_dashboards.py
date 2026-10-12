@@ -47,7 +47,7 @@ def create_dashboard(
     return client.create_dashboard(body)
 
 
-@router.put("/{dashboard_id}")
+@router.put("/{dashboard_id}", status_code=200)
 def update_dashboard(
     dashboard_id: str,
     body: dict[str, Any] = Body(...),

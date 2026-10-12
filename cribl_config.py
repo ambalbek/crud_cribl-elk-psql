@@ -34,6 +34,8 @@ def get_workspace(config: dict, name: str) -> dict:
 def get_worker_groups(workspace_cfg: dict) -> list[str]:
     """Returns the list of worker groups defined for a workspace."""
     groups = workspace_cfg.get("worker_groups", [])
+    if not groups and "worker_group" in workspace_cfg:
+        groups = [workspace_cfg["worker_group"]]
     if not groups:
         die("[ERR] No worker_groups defined for this workspace in config")
     return groups
@@ -83,15 +85,22 @@ def get_route_template_path(config: dict, workspace_cfg: dict, region: str) -> s
 def get_dest_template_path(config: dict, workspace_cfg: dict, region: str) -> str:
     """
     Returns the dest template path to use.
-    Priority: workspace-level single override > workspace dest_templates[region] map.
+    Priority: workspace-level single override > workspace dest_templates[region] map
+              > top-level dest_templates[region].
     """
     override = workspace_cfg.get("dest_template", "")
     if override:
         return override
+    # workspace-level per-region map
     templates = workspace_cfg.get("dest_templates", {})
     path = templates.get(region, "")
+    if path:
+        return path
+    # fall back to top-level map (same pattern as route templates)
+    templates = config.get("dest_templates", {})
+    path = templates.get(region, "")
     if not path:
-        die(f"[ERR] No dest_template defined for region '{region}' in workspace config")
+        die(f"[ERR] No dest_template defined for region '{region}' in workspace or config dest_templates")
     return path
 
 

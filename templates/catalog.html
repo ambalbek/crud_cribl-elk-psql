@@ -688,7 +688,7 @@
     tbody.innerHTML = '<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>Fetching live data from Cribl &amp; Elasticsearch...</div></div></td></tr>';
 
     try {
-      const resp = await fetch('/cribl/api/catalog');
+      const resp = await fetch('/cribl/api/catalog?refresh=true');
       const data = await resp.json();
       if (data.errors) {
         alert.textContent = data.errors.join(' ');
