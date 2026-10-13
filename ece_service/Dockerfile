@@ -5,7 +5,7 @@
 # docker-compose sets:  build: { context: ., dockerfile: ece_service/Dockerfile }
 # Manual build example: docker build -f ece_service/Dockerfile -t ece-service .
 
-FROM python:3.13-slim
+FROM python:3.12
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

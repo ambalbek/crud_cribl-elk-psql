@@ -5,7 +5,7 @@
 # docker-compose sets:  build: { context: ., dockerfile: cribl_service/Dockerfile }
 # Manual build example: docker build -f cribl_service/Dockerfile -t cribl-service .
 
-FROM python:3.13-slim
+FROM python:3.12
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
