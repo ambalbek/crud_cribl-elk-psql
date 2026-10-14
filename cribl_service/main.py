@@ -26,7 +26,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .routers import destinations, edge, leaders, packs, pipelines, provision, routes, stream, worker_groups, workgroups
-from .settings import LOG_LEVEL
+from .config import settings as _settings
+
+LOG_LEVEL = _settings.log_level
 
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(

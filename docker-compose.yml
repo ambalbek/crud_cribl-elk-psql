@@ -111,7 +111,8 @@ services:
 
   etn_onboarding:
     build:
-      context: ./etn_onboarding
+      context: .
+      dockerfile: etn_onboarding/Dockerfile
     restart: unless-stopped
     ports:
       - "0.0.0.0:5001:5000"

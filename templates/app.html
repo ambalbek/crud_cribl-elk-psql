@@ -1014,7 +1014,7 @@ function renderStatus(elId, returncode) {
 // ── Helper: render validation errors ─────────────────────────────────────
 function renderErrors(elId, errors) {
   const el = document.getElementById(elId);
-  el.innerHTML = errors.map(e => `<div class="alert alert-error">❌ ${e}</div>`).join('');
+  el.innerHTML = errors.map(e => `<div class="alert alert-error">${esc(e)}</div>`).join('');
 }
 
 // ── Helper: escape HTML ───────────────────────────────────────────────────

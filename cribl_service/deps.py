@@ -29,13 +29,14 @@ from cribl_api import (  # noqa: E402
     unwrap_response,
 )
 
-from .settings import (  # noqa: E402
-    CRIBL_BASE_URL,
-    CRIBL_TOKEN,
-    CRIBL_USERNAME,
-    CRIBL_PASSWORD,
-    CRIBL_SKIP_SSL,
-)
+from .config import settings as _settings  # noqa: E402
+
+# Single source of truth — derived from pydantic CriblSettings (config.py)
+CRIBL_BASE_URL = _settings.base_url
+CRIBL_TOKEN = _settings.token
+CRIBL_USERNAME = _settings.username
+CRIBL_PASSWORD = _settings.password
+CRIBL_SKIP_SSL = _settings.skip_ssl
 
 logger = logging.getLogger("cribl-service")
 

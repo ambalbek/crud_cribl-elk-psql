@@ -859,7 +859,7 @@
     const errorList = document.getElementById('error-list');
 
     if (errors.length) {
-      errorList.innerHTML = errors.map(e => `<li>${e}</li>`).join('');
+      errorList.innerHTML = errors.map(e => `<li>${esc(e)}</li>`).join('');
       errorBox.classList.add('visible');
       return;
     }
@@ -907,7 +907,7 @@
       if (data.errors) {
         console.error('[portal] server errors:', data.errors);
         const errArr = Array.isArray(data.errors) ? data.errors : [data.errors];
-        errorList.innerHTML = errArr.map(e => `<li>${e}</li>`).join('');
+        errorList.innerHTML = errArr.map(e => `<li>${esc(e)}</li>`).join('');
         errorBox.classList.add('visible');
         btn.disabled = false;
         btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" style="stroke:currentColor;stroke-width:2.2;fill:none;"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit request';
@@ -920,7 +920,7 @@
     })
     .catch(err => {
       console.error('[portal] fetch failed:', err);
-      errorList.innerHTML = `<li>Request failed: ${err.message} — check browser console for details.</li>`;
+      errorList.innerHTML = `<li>Request failed: ${esc(err.message)} — check browser console for details.</li>`;
       errorBox.classList.add('visible');
       btn.disabled = false;
       btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" style="stroke:currentColor;stroke-width:2.2;fill:none;"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit request';

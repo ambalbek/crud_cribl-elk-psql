@@ -764,6 +764,8 @@ def _cribl_base_and_headers(
         headers["Authorization"] = f"Bearer {resolved_token}"
     elif resolved_user and resolved_pass:
         # Cribl requires a bearer token — exchange username/password via login API
+        if skip_ssl:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         try:
             login_resp = http_client.post(
                 f"{base_url}/api/v1/auth/login",
@@ -771,22 +773,23 @@ def _cribl_base_and_headers(
                 timeout=10,
                 verify=not skip_ssl,
             )
-            if login_resp.status_code < 400:
-                bearer_token = login_resp.json().get("token", "")
-                if bearer_token:
-                    headers["Authorization"] = f"Bearer {bearer_token}"
-                else:
-                    log.warning("Cribl login returned no token, falling back to Basic auth")
-                    b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
-                    headers["Authorization"] = f"Basic {b64}"
+        except http_client.exceptions.SSLError as exc:
+            raise RuntimeError(
+                f"SSL certificate verification failed connecting to {base_url}. "
+                f"Enable 'Skip SSL Verification' or install the correct CA certificate. ({exc})"
+            )
+        except http_client.exceptions.ConnectionError as exc:
+            raise RuntimeError(f"Cannot connect to Cribl at {base_url}: {exc}")
+        if login_resp.status_code < 400:
+            bearer_token = login_resp.json().get("token", "")
+            if bearer_token:
+                headers["Authorization"] = f"Bearer {bearer_token}"
             else:
-                log.warning("Cribl login failed (%d), falling back to Basic auth", login_resp.status_code)
-                b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
-                headers["Authorization"] = f"Basic {b64}"
-        except Exception as exc:
-            log.warning("Cribl login error (%s), falling back to Basic auth", exc)
-            b64 = base64.b64encode(f"{resolved_user}:{resolved_pass}".encode()).decode()
-            headers["Authorization"] = f"Basic {b64}"
+                raise RuntimeError("Cribl login succeeded but returned no token")
+        else:
+            raise RuntimeError(
+                f"Cribl login failed: {login_resp.status_code} {login_resp.text[:300]}"
+            )
 
     return base_url, headers
 
@@ -2189,6 +2192,9 @@ def run_role_rm():
 
     # ── Subprocess fallback (no ECE_SERVICE_URL, or skip_elk=True) ────────
     tmp_path = None
+    output = ""
+    rc = 1
+    masked = ""
     try:
         if mode == "bulk" and file:
             with tempfile.NamedTemporaryFile(
@@ -2200,6 +2206,10 @@ def run_role_rm():
         cmd, masked = build_role_rm_cmd(form.to_dict(), tmp_path or "")
         output, rc  = run_subprocess(cmd, masked)
 
+    except Exception as exc:
+        log.error("run_role_rm subprocess fallback failed: %s", exc)
+        output = str(exc)
+        rc = 1
     finally:
         if tmp_path and os.path.exists(tmp_path):
             try:
