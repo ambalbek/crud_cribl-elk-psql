@@ -1141,7 +1141,7 @@ def portal_submit():
                 log.error("etn_onboarding response missing id: %s", result)
                 return jsonify({"errors": ["Onboarding service returned invalid response"]}), 502
             log.info("etn_onboarding intake OK — id=%s apm_id=%s", etn_request_id, app_id)
-        except requests.RequestException as exc:
+        except http_client.RequestException as exc:
             log.error("etn_onboarding intake error — %s", exc.__class__.__name__)
             return jsonify({"errors": [f"Onboarding service unavailable: {exc}"]}), 502
 
