@@ -1,8 +1,9 @@
 #!/bin/sh
 set -e
 
-echo "Ensuring enum types exist..."
-python -c "
+if [ -n "$DATABASE_URL" ]; then
+  echo "Ensuring enum types exist..."
+  python -c "
 import os, psycopg2
 conn = psycopg2.connect(os.environ['DATABASE_URL'])
 conn.autocommit = True
@@ -18,8 +19,11 @@ conn.close()
 print('Enum types ready.')
 "
 
-echo "Running database migrations..."
-flask --app wsgi:app db upgrade
+  echo "Running database migrations..."
+  flask --app wsgi:app db upgrade
+else
+  echo "DATABASE_URL not set — skipping DB setup"
+fi
 
 echo "Starting gunicorn..."
 exec gunicorn --bind 0.0.0.0:5000 wsgi:app
