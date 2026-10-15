@@ -2384,8 +2384,42 @@ def _build_catalog(config: dict) -> list:
         except Exception as exc:
             log.warning("catalog — PSQL fetch failed: %s", exc)
 
+    # Supplement from etn_onboarding if PSQL is empty or missing records
+    if ETN_ONBOARDING_URL:
+        try:
+            etn_headers = {"Content-Type": "application/json"}
+            if ETN_ONBOARDING_TOKEN:
+                etn_headers["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+            etn_resp = http_client.get(
+                f"{ETN_ONBOARDING_URL}/api/requests/",
+                headers=etn_headers,
+                timeout=10,
+            )
+            if etn_resp.status_code < 400:
+                for r in etn_resp.json():
+                    apm = r.get("apm_id", "")
+                    if apm and apm not in seen:
+                        form_data = r.get("form_data") or {}
+                        seen[apm] = {
+                            "apmid":              apm,
+                            "appname":            r.get("app_name", ""),
+                            "request_id":         str(r.get("id", "")),
+                            "region":             form_data.get("region", ""),
+                            "status":             r.get("status", ""),
+                            "lan_id":             form_data.get("lan_id", ""),
+                            "@timestamp":         r.get("created_at", ""),
+                            "requester_name":     r.get("requestor_name", ""),
+                            "entitlement_groups": form_data.get("entitlement_groups", []),
+                            "data_type":          form_data.get("data_type", ""),
+                            "log_types":          form_data.get("log_types", []),
+                            "log_destinations":   form_data.get("log_destinations", []),
+                        }
+                log.info("catalog — supplemented %d apps from etn_onboarding", len(seen))
+        except Exception as exc:
+            log.warning("catalog — etn_onboarding fetch failed: %s", exc)
+
     if not seen:
-        log.info("catalog — no apps in PSQL; returning empty catalog")
+        log.info("catalog — no apps found; returning empty catalog")
         return []
 
     # ── 2. ELK role mappings from all entitlement clusters ────────────────────
