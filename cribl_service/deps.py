@@ -78,12 +78,13 @@ class CriblClient:
         self._base = CRIBL_BASE_URL
         self._session = self._build_session()
 
-        # Priority: per-request override → env var → login
-        token = (
-            token_override
-            or CRIBL_TOKEN
-            or self._login(username_override, password_override)
-        )
+        # Priority: per-request token → env var token (only if no per-request user/pass) → login
+        if token_override:
+            token = token_override
+        elif CRIBL_TOKEN and not (username_override and password_override):
+            token = CRIBL_TOKEN
+        else:
+            token = self._login(username_override, password_override)
         self._session.headers.update({
             **_JSON_HEADERS,
             "Authorization": f"Bearer {token}",
