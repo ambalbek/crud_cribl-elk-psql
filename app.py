@@ -372,7 +372,7 @@ def es_index(doc: dict, config: dict) -> str:
     ds       = config.get("datastream", {})
     base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
     index    = ds.get("index", "logs-cribl-onboarding-requests")
-    skip_ssl = ds.get("skip_ssl", False)
+    skip_ssl = ds.get("skip_ssl", config.get("skip_ssl", False))
     timeout  = ds.get("timeout", 30)
 
     if not base_url:
@@ -462,7 +462,7 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
     ds       = config.get("datastream", {})
     base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
     index    = ds.get("index", "logs-cribl-onboarding-requests")
-    skip_ssl = ds.get("skip_ssl", False)
+    skip_ssl = ds.get("skip_ssl", config.get("skip_ssl", False))
     timeout  = ds.get("timeout", 30)
 
     if not base_url:
@@ -1395,7 +1395,7 @@ def health_es():
         config  = load_config()
         ds      = config.get("datastream", {})
         base_url = ds.get("elk_url", "").strip().rstrip("/")
-        skip_ssl = ds.get("skip_ssl", False)
+        skip_ssl = ds.get("skip_ssl", config.get("skip_ssl", False))
         timeout  = ds.get("timeout", 30)
 
         if not base_url.startswith(("http://", "https://")):
@@ -2247,13 +2247,13 @@ _CATALOG_CACHE_TTL   = 60  # seconds
 
 # ── Catalog helper functions ───────────────────────────────────────────────────
 
-def _make_es_session_for_catalog(ds: dict):
+def _make_es_session_for_catalog(ds: dict, global_skip_ssl: bool = False):
     """
     Build a requests.Session for a datastream/entitlement ES config block.
     Returns (session, base_url, headers).
     """
     base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
-    skip_ssl = ds.get("skip_ssl", False)
+    skip_ssl = ds.get("skip_ssl", global_skip_ssl)
     if base_url and not base_url.startswith(("http://", "https://")):
         base_url = "https://" + base_url
     if skip_ssl:
@@ -2351,7 +2351,7 @@ def _build_catalog(config: dict) -> list:
 
     ds      = config.get("datastream", {})
     timeout = ds.get("timeout", 30)
-    es_sess, es_base_url, es_headers = _make_es_session_for_catalog(ds)
+    es_sess, es_base_url, es_headers = _make_es_session_for_catalog(ds, global_skip_ssl=config.get("skip_ssl", False))
 
     # ── 1. Onboarding docs from PostgreSQL (source of truth) ─────────────────
     seen: dict = {}
@@ -2962,7 +2962,7 @@ def api_catalog_delete(apm_id):
     if not dry_run:
         ds            = config.get("datastream", {})
         offboard_idx  = ds.get("index", "cribl-onboarding-requests")
-        off_sess, off_base, off_hdrs = _make_es_session_for_catalog(ds)
+        off_sess, off_base, off_hdrs = _make_es_session_for_catalog(ds, global_skip_ssl=config.get("skip_ssl", False))
         if off_base:
             payload = {
                 "query":  {"term": {"apmid.keyword": apm_id}},
@@ -3113,7 +3113,7 @@ def cribl_run():
         # Update ES
         try:
             config_ds = config.get("datastream", {})
-            es_sess, es_base, es_hdrs = _make_es_session_for_catalog(config_ds)
+            es_sess, es_base, es_hdrs = _make_es_session_for_catalog(config_ds, global_skip_ssl=config.get("skip_ssl", False))
             if es_base:
                 es_idx = config_ds.get("index", "cribl-onboarding-requests")
                 es_sess.post(
