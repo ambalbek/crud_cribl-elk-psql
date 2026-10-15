@@ -804,14 +804,16 @@ def _cribl_dest_path(worker_group: str, dest_id: str = "") -> str:
     """Return the correct destination API path depending on whether
     we're routing through cribl_service or direct to Cribl.
 
-    cribl_service:  /api/v1/m/{wg}/destinations/{id}
+    cribl_service:  /cribl/stream/destinations/{id}?worker_group={wg}
     direct Cribl:   /api/v1/m/{wg}/system/outputs/{id}
     """
     if CRIBL_SERVICE_URL:
-        base = f"/api/v1/m/{worker_group}/destinations"
+        base = "/cribl/stream/destinations"
+        path = f"{base}/{dest_id}" if dest_id else base
+        return f"{path}?worker_group={worker_group}"
     else:
         base = f"/api/v1/m/{worker_group}/system/outputs"
-    return f"{base}/{dest_id}" if dest_id else base
+        return f"{base}/{dest_id}" if dest_id else base
 
 
 # ── Command builders (for subprocess calls to CLI scripts) ─────────────────────
@@ -1793,7 +1795,8 @@ def run_pusher():
 @admin_required
 def get_destination(worker_group: str, destination_id: str):
     """Fetch a single destination from cribl_service or direct Cribl API."""
-    skip_ssl = request.args.get("skip_ssl", "").lower() in ("1", "true", "yes")
+    _global_skip = load_config().get("skip_ssl", False)
+    skip_ssl = request.args.get("skip_ssl", "").lower() in ("1", "true", "yes") or _global_skip
     try:
         base, hdrs = _cribl_base_and_headers(
             cribl_url=request.args.get("cribl_url", ""),
@@ -1841,7 +1844,8 @@ def patch_destination():
         worker_group, destination_id, list(patch_fields.keys()),
     )
 
-    skip_ssl = bool(data.get("skip_ssl"))
+    _global_skip = load_config().get("skip_ssl", False)
+    skip_ssl = bool(data.get("skip_ssl")) or _global_skip
 
     try:
         base, hdrs = _cribl_base_and_headers(
@@ -1887,7 +1891,8 @@ def patch_destination():
 @admin_required
 def list_destinations(worker_group: str):
     """List all destinations for a worker group."""
-    skip_ssl = request.args.get("skip_ssl", "").lower() in ("1", "true", "yes")
+    _global_skip = load_config().get("skip_ssl", False)
+    skip_ssl = request.args.get("skip_ssl", "").lower() in ("1", "true", "yes") or _global_skip
     try:
         base, hdrs = _cribl_base_and_headers(
             cribl_url=request.args.get("cribl_url", ""),
@@ -1928,7 +1933,8 @@ def bulk_patch_destinations():
     filter_prefix = (data.get("filter_prefix") or "").strip()
     explicit_ids = data.get("destination_ids") or []
 
-    skip_ssl = bool(data.get("skip_ssl"))
+    _global_skip = load_config().get("skip_ssl", False)
+    skip_ssl = bool(data.get("skip_ssl")) or _global_skip
 
     errors = []
     if not worker_group:
