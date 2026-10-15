@@ -421,12 +421,15 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
     # ── Update PostgreSQL ─────────────────────────────────────────────────
     if _db_url:
         try:
-            row = OnboardingRequest.query.filter_by(request_id=request_id).first()
+            row = (
+                OnboardingRequest.query.filter_by(request_id=request_id).first()
+                or OnboardingRequest.query.filter_by(apmid=request_id).first()
+            )
             if row:
                 row.status = status
                 apmid = row.apmid
                 db.session.commit()
-                log.info("PSQL status update OK — request_id=%s  status=%s", request_id, status)
+                log.info("PSQL status update OK — request_id=%s  apmid=%s  status=%s", request_id, apmid, status)
             else:
                 log.warning("PSQL status update — request_id=%s not found", request_id)
         except Exception as exc:
@@ -1197,32 +1200,36 @@ def portal_submit():
         legacy_req_id = f"REQ-{now.strftime('%Y%m%d')}-{etn_request_id[:8].upper()}"
         if _db_url:
             try:
-                row = OnboardingRequest(
-                    request_id=legacy_req_id,
-                    timestamp=now,
-                    lan_id=lan_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    requester_name=req_name,
-                    apmid=app_id,
-                    appname=app_name,
-                    app_team=app_team,
-                    ays_group=ays_group,
-                    app_emails=app_emails,
-                    region=region,
-                    environment=environments,
-                    log_destinations=log_dests,
-                    log_types=log_types,
-                    entitlement_groups=groups,
-                    data_type=data_type,
-                    dest=dest,
-                    ilm_tier=ilm_tier,
-                    elk_capacity=elk_capacity if elk_capacity else None,
-                    status="pending",
-                )
-                db.session.add(row)
-                db.session.commit()
-                log.info("PSQL insert OK — request_id=%s", etn_request_id)
+                existing = OnboardingRequest.query.filter_by(apmid=app_id).first()
+                if existing:
+                    log.info("PSQL skip — apmid=%s already exists (request_id=%s)", app_id, existing.request_id)
+                else:
+                    row = OnboardingRequest(
+                        request_id=legacy_req_id,
+                        timestamp=now,
+                        lan_id=lan_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        requester_name=req_name,
+                        apmid=app_id,
+                        appname=app_name,
+                        app_team=app_team,
+                        ays_group=ays_group,
+                        app_emails=app_emails,
+                        region=region,
+                        environment=environments,
+                        log_destinations=log_dests,
+                        log_types=log_types,
+                        entitlement_groups=groups,
+                        data_type=data_type,
+                        dest=dest,
+                        ilm_tier=ilm_tier,
+                        elk_capacity=elk_capacity if elk_capacity else None,
+                        status="pending",
+                    )
+                    db.session.add(row)
+                    db.session.commit()
+                    log.info("PSQL insert OK — request_id=%s", etn_request_id)
             except Exception as exc:
                 db.session.rollback()
                 log.warning("PSQL insert failed (non-fatal) — %s: %s", type(exc).__name__, exc)
@@ -1734,8 +1741,10 @@ def run_pusher():
             )
 
         portal_result = None
-        if last_rc == 0 and not dry_run and request_id:
-            portal_result = portal_update_status_internal(request_id, "done", config)
+        if last_rc == 0 and not dry_run:
+            _update_id = request_id or (apps[0][0] if apps else "")
+            if _update_id:
+                portal_result = portal_update_status_internal(_update_id, "done", config)
 
         return jsonify({
             "output":        all_output.strip(),
@@ -1780,8 +1789,10 @@ def run_pusher():
                 pass
 
     portal_result = None
-    if last_rc == 0 and not dry_run and request_id:
-        portal_result = portal_update_status_internal(request_id, "done", config)
+    if last_rc == 0 and not dry_run:
+        _update_id = request_id or (apps[0][0] if apps else "")
+        if _update_id:
+            portal_result = portal_update_status_internal(_update_id, "done", config)
 
     return jsonify({
         "output":        all_output.strip(),
@@ -2192,8 +2203,10 @@ def run_role_rm():
                 last_rc = 1
 
         portal_result = None
-        if last_rc == 0 and not dry_run and request_id:
-            portal_result = portal_update_status_internal(request_id, "done", config)
+        if last_rc == 0 and not dry_run:
+            _update_id = request_id or form.get("apmid", "").strip()
+            if _update_id:
+                portal_result = portal_update_status_internal(_update_id, "done", config)
 
         return jsonify({
             "output":        all_output.strip(),
@@ -2230,8 +2243,10 @@ def run_role_rm():
                 pass
 
     portal_result = None
-    if rc == 0 and not dry_run and request_id:
-        portal_result = portal_update_status_internal(request_id, "done", config)
+    if rc == 0 and not dry_run:
+        _update_id = request_id or form.get("apmid", "").strip()
+        if _update_id:
+            portal_result = portal_update_status_internal(_update_id, "done", config)
 
     return jsonify({
         "output":        output,
@@ -2399,20 +2414,19 @@ def _build_catalog(config: dict) -> list:
                 for r in etn_resp.json():
                     apm = r.get("apm_id", "")
                     if apm and apm not in seen:
-                        form_data = r.get("form_data") or {}
                         seen[apm] = {
                             "apmid":              apm,
                             "appname":            r.get("app_name", ""),
                             "request_id":         str(r.get("id", "")),
-                            "region":             form_data.get("region", ""),
+                            "region":             r.get("region", ""),
                             "status":             r.get("status", ""),
-                            "lan_id":             form_data.get("lan_id", ""),
+                            "lan_id":             r.get("lan_id", ""),
                             "@timestamp":         r.get("created_at", ""),
                             "requester_name":     r.get("requestor_name", ""),
-                            "entitlement_groups": form_data.get("entitlement_groups", []),
-                            "data_type":          form_data.get("data_type", ""),
-                            "log_types":          form_data.get("log_types", []),
-                            "log_destinations":   form_data.get("log_destinations", []),
+                            "entitlement_groups": r.get("entitlement_groups", []),
+                            "data_type":          r.get("data_type", ""),
+                            "log_types":          r.get("log_types", []),
+                            "log_destinations":   r.get("log_destinations", []),
                         }
                 log.info("catalog — supplemented %d apps from etn_onboarding", len(seen))
         except Exception as exc:
@@ -3044,6 +3058,8 @@ def cribl_run():
 
     if not apmid or not appname:
         return jsonify({"errors": ["apmid and appname are required"]}), 400
+    if not region:
+        return jsonify({"errors": ["region is required (azn or azs)"]}), 400
 
     try:
         config = load_config()
