@@ -601,8 +601,14 @@ def parse_cn(dn):
     return match.group(1) if match else dn
 
 
-def fetch_role_mappings(cluster):
+def fetch_role_mappings(cluster, global_skip_ssl=None):
     """Fetch role mappings from an Elasticsearch cluster via the Security API."""
+    if global_skip_ssl is None:
+        try:
+            global_skip_ssl = load_config().get("skip_ssl", False)
+        except Exception:
+            global_skip_ssl = False
+    skip_ssl = cluster.get('skip_ssl', global_skip_ssl)
     url = f"{cluster['url'].rstrip('/')}/_security/role_mapping"
     log.info("Cluster [%s] — requesting %s", cluster['name'], url)
     start = time.time()
@@ -610,7 +616,7 @@ def fetch_role_mappings(cluster):
         resp = http_client.get(
             url,
             auth=HTTPBasicAuth(cluster['username'], cluster['password']),
-            verify=not cluster.get('skip_ssl', False),
+            verify=not skip_ssl,
             timeout=(10, 120),
         )
         elapsed = time.time() - start
@@ -1527,7 +1533,7 @@ def api_entitlements():
 
     for cluster in clusters:
         try:
-            role_mappings = fetch_role_mappings(cluster)
+            role_mappings = fetch_role_mappings(cluster, global_skip_ssl=config.get("skip_ssl", False))
             log.info("Cluster [%s] — %d role mappings returned", cluster['name'], len(role_mappings))
 
             for mapping_name, mapping in role_mappings.items():
@@ -2843,7 +2849,7 @@ def api_catalog_delete(apm_id):
     for cluster in clusters:
         cluster_url   = cluster.get("url", "").rstrip("/")
         cluster_token = cluster.get("token", "").strip()
-        cluster_ssl   = not cluster.get("skip_ssl", False)
+        cluster_ssl   = not cluster.get("skip_ssl", config.get("skip_ssl", False))
         cluster_auth  = None if cluster_token else HTTPBasicAuth(
             cluster.get("username", ""), cluster.get("password", "")
         )
@@ -2852,7 +2858,7 @@ def api_catalog_delete(apm_id):
             cluster_hdrs["Authorization"] = f"ApiKey {cluster_token}"
 
         try:
-            all_mappings = fetch_role_mappings(cluster)
+            all_mappings = fetch_role_mappings(cluster, global_skip_ssl=config.get("skip_ssl", False))
         except Exception as exc:
             results["actions"].append({
                 "type": "elk_role_mappings_fetch",

@@ -135,7 +135,8 @@
         "name": "lab",
         "url": "http://127.0.0.1:9200",
         "username": "elastic",
-        "password": "changeme"
+        "password": "changeme",
+        "skip_ssl": true
       }
     ],
     "entitlementFilter": "entitlements"
