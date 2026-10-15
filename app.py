@@ -3100,16 +3100,12 @@ def cribl_run():
         except Exception as exc:
             return jsonify({"errors": [f"Config error: {exc}"]}), 500
 
-        # Forward credentials: request body overrides → workspace → config → env
+        # Forward only explicit user-provided credentials from the request body.
+        # If none provided, cribl_service uses its own CRIBL_TOKEN env var.
         run_cred_headers: dict[str, str] = {}
-        creds = config.get("credentials", {})
-        ws_creds = ws_cfg.get("credentials", {})
-        run_token = (data.get("token") or ws_creds.get("token", "") or creds.get("token", "") or "").strip()
-        run_user  = (data.get("username") or ws_creds.get("username", "") or creds.get("username", "") or "").strip()
-        run_pass  = (data.get("password") or ws_creds.get("password", "") or creds.get("password", "") or "").strip()
-        run_url   = (data.get("cribl_url") or ws_cfg.get("base_url", "") or config.get("base_url", "") or "").strip()
-        if run_url:
-            run_cred_headers["X-Cribl-Url"] = run_url
+        run_token = (data.get("token") or "").strip()
+        run_user  = (data.get("username") or "").strip()
+        run_pass  = (data.get("password") or "").strip()
         if run_token:
             run_cred_headers["X-Cribl-Token"] = run_token
         if run_user:

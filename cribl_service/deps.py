@@ -66,16 +66,17 @@ class CriblClient:
     def __init__(
         self,
         *,
+        url_override: str = "",
         token_override: str = "",
         username_override: str = "",
         password_override: str = "",
     ) -> None:
-        if not CRIBL_BASE_URL:
+        self._base = (url_override.rstrip("/") if url_override else "") or CRIBL_BASE_URL
+        if not self._base:
             raise HTTPException(
                 status_code=500,
-                detail="CRIBL_BASE_URL env var is not set",
+                detail="No Cribl URL configured. Pass it from the UI or set CRIBL_BASE_URL env var.",
             )
-        self._base = CRIBL_BASE_URL
         self._session = self._build_session()
 
         # Priority: per-request token → env var token (only if no per-request user/pass) → login
@@ -498,13 +499,15 @@ class CriblClient:
 def get_cribl_client(request: Request) -> CriblClient:
     """FastAPI dependency — new authenticated client per request.
 
-    Reads optional credential-override headers so the portal can forward
+    Reads optional override headers so the portal can forward
     the user's form values:
+      X-Cribl-Url      — Cribl base URL (overrides CRIBL_BASE_URL)
       X-Cribl-Token    — bearer token (skips login)
       X-Cribl-Username — username for /auth/login
       X-Cribl-Password — password for /auth/login
     """
     return CriblClient(
+        url_override=request.headers.get("X-Cribl-Url", ""),
         token_override=request.headers.get("X-Cribl-Token", ""),
         username_override=request.headers.get("X-Cribl-Username", ""),
         password_override=request.headers.get("X-Cribl-Password", ""),
