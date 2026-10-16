@@ -4,6 +4,10 @@
   "log_level": "INFO",
   "log_format": "text",
 
+  "cribl_service_url": "http://cribl-service:8001",
+  "ece_service_url": "http://ece-service:8002",
+  "etn_onboarding_url": "http://etn-onboarding:5000",
+
   "secret_key": "CHANGE_ME_GENERATE_A_RANDOM_64_CHAR_STRING",
 
   "auth": {
@@ -137,6 +141,7 @@
       {
         "name": "lab",
         "url": "http://127.0.0.1:9200",
+        "token": "",
         "username": "elastic",
         "password": "changeme",
         "skip_ssl": true
@@ -175,7 +180,9 @@
     "cribl_service_url": "http://cribl-service:8001",
     "ece_service_url": "http://ece-service:8002",
     "etn_onboarding_url": "http://etn-onboarding:5000",
-    "token": "CHANGEME"
+    "token": "CHANGEME",
+    "etn_portal_url": "",
+    "etn_portal_api_key": ""
   },
 
   "_workspace_options_reference": {
