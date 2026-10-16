@@ -1,12 +1,14 @@
 {
   "_comment": "Cribl pusher configuration. Store this file securely — it may contain credentials.",
 
+  "log_level": "INFO",
+  "log_format": "text",
+
   "secret_key": "CHANGE_ME_GENERATE_A_RANDOM_64_CHAR_STRING",
 
   "auth": {
     "_comment": "Local authentication with role-based access control.",
     "session_lifetime_minutes": 480,
-    "secure_cookie": false,
     "local_admins": [
       {
         "_comment": "Admin accounts — full access to all pages.",
@@ -25,8 +27,8 @@
     ]
   },
 
-  "base_url": "http://localhost:9000",
-  "cribl_urls": ["http://localhost:9000"],
+  "base_url": "http://127.0.0.1:9000",
+  "cribl_urls": ["http://127.0.0.1:9000"],
   "elk_urls": [],
   "skip_ssl": false,
 
@@ -34,7 +36,7 @@
     "_comment": "Leave token empty to use username+password login. CLI flags and env vars override these.",
     "token": "",
     "username": "admin",
-    "password": "passwd"
+    "password": "password"
   },
 
   "route_templates": {
@@ -99,12 +101,13 @@
     }
   },
 
-  "portal": {
-    "_comment": "cribl-portal integration — after a successful pusher run, update the request status automatically.",
-    "url": "",
-    "admin_secret": "",
-    "skip_ssl": false,
-    "timeout": 10
+  "ldap": {
+    "_comment": "LDAP settings for portal lanId autocomplete. Env vars LDAP_SERVER, LDAP_BIND_DN, LDAP_BIND_PW, LDAP_BASE_DN override these.",
+    "server":  "ldaps://ldap.corp.example.com:636",
+    "bind_dn": "CN=svc-cribl,OU=ServiceAccounts,DC=corp,DC=example,DC=com",
+    "bind_pw": "CHANGE_ME",
+    "base_dn": "DC=corp,DC=example,DC=com",
+    "use_ssl": true
   },
 
   "admin_secret": "CHANGE_ME_TO_A_STRONG_RANDOM_STRING",
@@ -112,14 +115,19 @@
   "iiq_url": "https://iiq.company.com/MOYAACESS",
   "dynatrace_url": "https://dynatrace.company.com/questionnaire",
 
+  "database": {
+    "_comment": "PostgreSQL connection for persisting onboarding requests.",
+    "url": "postgresql://cribl:cribl@127.0.0.1:5432/cribl"
+  },
+
   "datastream": {
     "_comment": "Elasticsearch datastream where onboarding requests are stored and status is updated.",
-    "elk_url":  "https://localhost:9200",
+    "elk_url":  "http://127.0.0.1:9200",
     "token":    "",
-    "username": "",
-    "password": "",
+    "username": "elastic",
+    "password": "changeme",
     "index":    "cribl-onboarding-requests",
-    "skip_ssl": false,
+    "skip_ssl": true,
     "timeout":  30
   },
 
@@ -127,13 +135,47 @@
     "_comment": "Elasticsearch clusters for entitlement lookup (role mappings). Used by /entitlements page.",
     "clusters": [
       {
-        "name": "production",
-        "url": "https://elk-prod.example.com:9200",
+        "name": "lab",
+        "url": "http://127.0.0.1:9200",
         "username": "elastic",
-        "password": "changeme"
+        "password": "changeme",
+        "skip_ssl": true
       }
     ],
     "entitlementFilter": "entitlements"
+  },
+
+  "ece": {
+    "_comment": "ECE service — Elasticsearch and Kibana connections.",
+    "es_url": "http://127.0.0.1:9200",
+    "es_token": "",
+    "es_username": "elastic",
+    "es_password": "changeme",
+    "es_url_prod": "",
+    "es_token_prod": "",
+    "es_username_prod": "",
+    "es_password_prod": "",
+    "kibana_url": "",
+    "kibana_token": "",
+    "kibana_username": "",
+    "kibana_password": "",
+    "skip_ssl": true,
+    "timeout": 60,
+    "templates_dir": "ops_rm_r_templates_output"
+  },
+
+  "etn_onboarding": {
+    "_comment": "ETN onboarding service settings.",
+    "database_url": "postgresql://etn_user:etn_pass@etn_postgres:5432/etn_onboarding",
+    "secret_key": "CHANGE_ME_GENERATE_A_RANDOM_64_CHAR_STRING",
+    "auth_backend": "local",
+    "auth_local_users": [
+      {"username": "portal", "token": "CHANGEME", "roles": ["platform_admin"]}
+    ],
+    "cribl_service_url": "http://cribl-service:8001",
+    "ece_service_url": "http://ece-service:8002",
+    "etn_onboarding_url": "http://etn-onboarding:5000",
+    "token": "CHANGEME"
   },
 
   "_workspace_options_reference": {
@@ -146,5 +188,3 @@
     "description": "human-readable label shown in the TARGET banner"
   }
 }
-
-
