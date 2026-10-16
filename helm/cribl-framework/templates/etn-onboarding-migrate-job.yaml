@@ -27,7 +27,31 @@ spec:
           imagePullPolicy: {{ .Values.etnOnboarding.image.pullPolicy | default .Values.global.imagePullPolicy }}
           securityContext:
             {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
-          command: ["flask", "--app", "wsgi:app", "db", "upgrade"]
+          # Create/backfill the enum types (the models use create_type=False and
+          # NO migration issues CREATE TYPE, so a bare `flask db upgrade` fails on
+          # a fresh DB), then upgrade. cd into the package dir so `wsgi:app` and
+          # alembic's relative migrations/ both resolve (WORKDIR is /app, code is
+          # under /app/etn_onboarding).
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              cd "$(dirname "$(python -c 'import etn_onboarding, os; print(os.path.dirname(etn_onboarding.__file__))' 2>/dev/null || echo /app/etn_onboarding)")" 2>/dev/null || cd /app/etn_onboarding
+              python - <<'PY'
+              import os, psycopg2
+              conn = psycopg2.connect(os.environ["DATABASE_URL"]); conn.autocommit = True
+              cur = conn.cursor()
+              for stmt in [
+                  "DO $$ BEGIN CREATE TYPE request_status_enum AS ENUM ('intake_pending','intake_validated','engagement','solutioning','storage_pending','storage_confirmed','delivery_destination','delivery_pack','delivery_route','delivery_collection','delivery_routing','delivery_storage','delivery_complete','delivery_failed','validation','reverify','complete','cancelled'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
+                  "DO $$ BEGIN CREATE TYPE job_type_enum AS ENUM ('cribl_edge','etn_portal','harness_blob'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
+                  "DO $$ BEGIN CREATE TYPE job_status_enum AS ENUM ('pending','running','success','failed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
+              ]:
+                  cur.execute(stmt)
+              for val in ('storage_pending','storage_confirmed','delivery_destination','delivery_pack','delivery_route','delivery_collection','delivery_routing','delivery_storage','delivery_complete','delivery_failed','validation','reverify','complete','cancelled'):
+                  cur.execute("ALTER TYPE request_status_enum ADD VALUE IF NOT EXISTS %s" % repr(val))
+              cur.close(); conn.close(); print("Enum types ready.")
+              PY
+              flask --app wsgi:app db upgrade
           # This hook runs BEFORE the release's manifests are applied, so it
           # cannot envFrom the chart-managed secret on first install — the
           # database URL is set inline (or from an existing, pre-created secret).

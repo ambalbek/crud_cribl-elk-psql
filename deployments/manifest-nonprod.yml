@@ -45,6 +45,18 @@ cyberark:
       value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/es-datastream-password/value"
     - name: ENT_ES_CLUSTERS
       value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/ent-es-clusters/value"
+    # Bearer token the portal sends to etn-onboarding. MUST equal the token in
+    # etn's AUTH_LOCAL_USERS, or the catalog's /api/requests/ fetch and the
+    # post-provision transition both 401. (Secret kept here with the others; the
+    # non-secret service URLs live in deployment.yml and are merged in by CD.)
+    - name: ETN_ONBOARDING_TOKEN
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/etn-onboarding-token/value"
+    # Cribl creds for the service-catalog per-workspace login (fallback used when
+    # the mounted config.json leaves base_url/credentials empty).
+    - name: CRIBL_BASE_URL
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/cribl-base-url/value"
+    - name: CRIBL_TOKEN
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/cribl-token/value"
 
 service:
   type: http

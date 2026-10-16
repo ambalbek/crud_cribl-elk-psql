@@ -33,6 +33,13 @@ cyberark:
       value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/database-url/value"
     - name: SECRET_KEY
       value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/secret-key/value"
+    # AUTH_LOCAL_USERS: JSON list, e.g.
+    #   [{"username":"portal","token":"<same token the portal uses as ETN_ONBOARDING_TOKEN>","roles":["platform_admin"]}]
+    # Without this env var the pod defaults to "[]" → zero users → every bearer
+    # token 401s → catalog unauthorized AND the post-provision transition is
+    # silently blocked. The token MUST equal the portal's ETN_ONBOARDING_TOKEN.
+    - name: AUTH_LOCAL_USERS
+      value: "ConjurSync/AAM_NONPROD01/AAM-XXXXXXXX-CON-T-01-ONS/cribl-elk-psql-nonprod/etn-auth-local-users/value"
 
 service:
   type: http
