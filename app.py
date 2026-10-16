@@ -56,20 +56,24 @@ CONFIG_PATH = SCRIPT_DIR / "config.json"
 PUSHER      = SCRIPT_DIR / "cribl-pusher.py"
 ROLE_RM     = SCRIPT_DIR / "role_rm.py"
 
-# Microservice base URLs — set via env in docker-compose; fall back to empty
-# so the portal degrades gracefully to subprocess mode when running standalone.
-CRIBL_SERVICE_URL      = os.environ.get("CRIBL_SERVICE_URL", "").rstrip("/")
-ECE_SERVICE_URL        = os.environ.get("ECE_SERVICE_URL",   "").rstrip("/")
-ETN_ONBOARDING_URL     = os.environ.get("ETN_ONBOARDING_URL", "").rstrip("/")
-def _etn_token_default() -> str:
-    """Read etn_onboarding.token from config.json as fallback."""
+# ── Early config.json read (before load_config is defined) ───────────────────
+def _early_cfg() -> dict:
+    """Read config.json once at import time for module-level defaults."""
     try:
         if CONFIG_PATH.exists():
-            return json.loads(CONFIG_PATH.read_text()).get("etn_onboarding", {}).get("token", "")
+            return json.loads(CONFIG_PATH.read_text())
     except Exception:
         pass
-    return ""
-ETN_ONBOARDING_TOKEN   = os.environ.get("ETN_ONBOARDING_TOKEN") or _etn_token_default()
+    return {}
+
+_boot_cfg = _early_cfg()
+_boot_etn = _boot_cfg.get("etn_onboarding", {})
+
+# Microservice base URLs — env var wins, then config.json, then empty.
+CRIBL_SERVICE_URL    = (os.environ.get("CRIBL_SERVICE_URL") or _boot_etn.get("cribl_service_url", "")).rstrip("/")
+ECE_SERVICE_URL      = (os.environ.get("ECE_SERVICE_URL") or _boot_etn.get("ece_service_url", "")).rstrip("/")
+ETN_ONBOARDING_URL   = os.environ.get("ETN_ONBOARDING_URL", "").rstrip("/")
+ETN_ONBOARDING_TOKEN = os.environ.get("ETN_ONBOARDING_TOKEN") or _boot_etn.get("token", "")
 
 # LDAP lookup — for portal lanId autocomplete
 # Reads from config.json "ldap" block, env vars override.
@@ -100,7 +104,13 @@ def setup_app_logging(app: Flask) -> logging.Logger:
     - Flask's default werkzeug request logger is left intact but its
       level is raised to WARNING so it doesn't double-print every request.
     """
-    log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    _cfg_log = {}
+    try:
+        if CONFIG_PATH.exists():
+            _cfg_log = json.loads(CONFIG_PATH.read_text())
+    except Exception:
+        pass
+    log_level = (os.environ.get("LOG_LEVEL") or _cfg_log.get("log_level", "INFO")).upper()
     if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         log_level = "INFO"
 

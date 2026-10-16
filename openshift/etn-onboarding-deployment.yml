@@ -29,16 +29,6 @@ spec:
           env:
             - name: OPENSSL_CONF
               value: /dev/null
-            - name: LOG_LEVEL
-              valueFrom:
-                configMapKeyRef:
-                  name: cribl-elk-psql-config
-                  key: log-level
-            - name: LOG_FORMAT
-              valueFrom:
-                configMapKeyRef:
-                  name: cribl-elk-psql-config
-                  key: log-format
           volumeMounts:
             - name: app-config
               mountPath: /app/config.json

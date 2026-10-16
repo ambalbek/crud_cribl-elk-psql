@@ -29,22 +29,6 @@ spec:
           env:
             - name: OPENSSL_CONF
               value: /dev/null
-            - name: LOG_LEVEL
-              valueFrom:
-                configMapKeyRef:
-                  name: cribl-elk-psql-config
-                  key: log-level
-            - name: LOG_FORMAT
-              valueFrom:
-                configMapKeyRef:
-                  name: cribl-elk-psql-config
-                  key: log-format
-            - name: CRIBL_SERVICE_URL
-              value: "http://cribl-service:8001"
-            - name: ECE_SERVICE_URL
-              value: "http://ece-service:8002"
-            - name: ETN_ONBOARDING_URL
-              value: "http://etn-onboarding:5000"
           volumeMounts:
             - name: app-config
               mountPath: /app/config.json
