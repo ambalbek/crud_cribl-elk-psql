@@ -61,7 +61,15 @@ ROLE_RM     = SCRIPT_DIR / "role_rm.py"
 CRIBL_SERVICE_URL      = os.environ.get("CRIBL_SERVICE_URL", "").rstrip("/")
 ECE_SERVICE_URL        = os.environ.get("ECE_SERVICE_URL",   "").rstrip("/")
 ETN_ONBOARDING_URL     = os.environ.get("ETN_ONBOARDING_URL", "").rstrip("/")
-ETN_ONBOARDING_TOKEN   = os.environ.get("ETN_ONBOARDING_TOKEN", "")
+def _etn_token_default() -> str:
+    """Read etn_onboarding.token from config.json as fallback."""
+    try:
+        if CONFIG_PATH.exists():
+            return json.loads(CONFIG_PATH.read_text()).get("etn_onboarding", {}).get("token", "")
+    except Exception:
+        pass
+    return ""
+ETN_ONBOARDING_TOKEN   = os.environ.get("ETN_ONBOARDING_TOKEN") or _etn_token_default()
 
 # LDAP lookup — for portal lanId autocomplete
 # Reads from config.json "ldap" block, env vars override.
