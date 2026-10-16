@@ -1,26 +1,27 @@
 """
 Settings for cribl_service.
-All values read from environment variables — no config.json at request time.
+
+Reads from /app/config.json via config.py with env-var overrides.
 """
-import os
+from .config import settings as _s
 
 # Cribl Stream connection
-CRIBL_BASE_URL: str = os.environ.get("CRIBL_BASE_URL", "").rstrip("/")
-CRIBL_TOKEN: str = os.environ.get("CRIBL_TOKEN", "")
-CRIBL_USERNAME: str = os.environ.get("CRIBL_USERNAME", "")
-CRIBL_PASSWORD: str = os.environ.get("CRIBL_PASSWORD", "")
-CRIBL_SKIP_SSL: bool = os.environ.get("CRIBL_SKIP_SSL", "false").lower() in ("1", "true", "yes")
+CRIBL_BASE_URL: str = _s.base_url.rstrip("/") if _s.base_url else ""
+CRIBL_TOKEN: str = _s.token
+CRIBL_USERNAME: str = _s.username
+CRIBL_PASSWORD: str = _s.password
+CRIBL_SKIP_SSL: bool = _s.skip_ssl
 
 # HTTP behaviour
-CRIBL_TIMEOUT: int = int(os.environ.get("CRIBL_TIMEOUT", "30"))
+CRIBL_TIMEOUT: int = _s.timeout
 
 # Defaults for route/workspace operations
-CRIBL_DEFAULT_WORKSPACE: str = os.environ.get("CRIBL_DEFAULT_WORKSPACE", "default")
-CRIBL_DEFAULT_ROUTES_TABLE: str = os.environ.get("CRIBL_DEFAULT_ROUTES_TABLE", "default")
-CRIBL_MIN_EXISTING_ROUTES: int = int(os.environ.get("CRIBL_MIN_EXISTING_ROUTES", "1"))
+CRIBL_DEFAULT_WORKSPACE: str = _s.default_workspace
+CRIBL_DEFAULT_ROUTES_TABLE: str = _s.default_routes_table
+CRIBL_MIN_EXISTING_ROUTES: int = _s.min_existing_routes
 
 # Snapshot storage
-CRIBL_SNAPSHOT_DIR: str = os.environ.get("CRIBL_SNAPSHOT_DIR", "cribl_snapshots")
+CRIBL_SNAPSHOT_DIR: str = _s.snapshot_dir
 
 # Logging
-LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL: str = _s.log_level.upper()
