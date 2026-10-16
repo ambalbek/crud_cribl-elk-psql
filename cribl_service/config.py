@@ -72,3 +72,4 @@ class CriblSettings(BaseSettings):
 
 
 settings = CriblSettings()
+
