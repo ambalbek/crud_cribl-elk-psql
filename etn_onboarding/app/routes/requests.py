@@ -5,7 +5,12 @@ from flask import Blueprint, request, jsonify
 from app.auth import require_role
 from app.extensions import db
 from app.models import OnboardingRequest, RequestStatus
-from app.services.state_machine import transition_request, InvalidTransitionError
+from app.services.state_machine import (
+    transition_request,
+    advance_to,
+    InvalidTransitionError,
+    StatusUnreachableError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +177,75 @@ def transition_by_apm_id(apm_id):
         "apm_id": apm_id,
         "status": onboarding_req.status.value,
         "audit_id": str(audit_entry.id),
+    }), 200
+
+
+@requests_bp.route("/by-apm/<apm_id>/advance", methods=["POST"])
+@require_role("platform_admin")
+def advance_by_apm_id(apm_id):
+    """Advance a request forward to ``target_status`` through all allowed steps.
+
+    Unlike ``/transition`` (a single hop), this walks the state machine from the
+    request's current status up to the target, creating one audit log per hop
+    and committing once. It is idempotent: if the request is already at or past
+    the target on the happy path it returns 200 with ``advanced: false`` instead
+    of a 409.
+
+    Used by the portal after a successful provision to mark a request as
+    ``delivery_complete`` without needing to know its exact current status. The
+    old behaviour (POST /transition straight to delivery_complete) was illegal
+    from any state except delivery_collection and so always 409'd, which the
+    portal silently swallowed — the bug where the DB never updated on success.
+    """
+    onboarding_req = OnboardingRequest.query.filter_by(apm_id=apm_id).first()
+    if not onboarding_req:
+        return jsonify({"error": f"No onboarding request with apm_id '{apm_id}'"}), 404
+
+    body = request.get_json(silent=True) or {}
+    target_status_str = body.get("target_status")
+    if not target_status_str:
+        return jsonify({"error": "target_status is required"}), 400
+
+    try:
+        target_status = RequestStatus(target_status_str)
+    except ValueError:
+        valid = [s.value for s in RequestStatus]
+        return jsonify({"error": f"Invalid target_status '{target_status_str}'", "valid_statuses": valid}), 400
+
+    actor = body.get("actor", "system")
+    action = body.get("action")
+    metadata = body.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        return jsonify({"error": "metadata must be a dict"}), 400
+
+    starting_status = onboarding_req.status
+    try:
+        audits = advance_to(
+            onboarding_req,
+            target_status,
+            actor=actor,
+            action=action,
+            metadata=metadata,
+        )
+        db.session.commit()
+    except StatusUnreachableError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc), "current_status": starting_status.value}), 409
+
+    advanced = len(audits) > 0
+    logger.info(
+        "Advance by apm_id: apm_id=%s request_id=%s %s -> %s (advanced=%s, steps=%d) actor=%s",
+        apm_id, onboarding_req.id, starting_status.value,
+        onboarding_req.status.value, advanced, len(audits), actor,
+    )
+
+    return jsonify({
+        "id": str(onboarding_req.id),
+        "apm_id": apm_id,
+        "status": onboarding_req.status.value,
+        "advanced": advanced,
+        "steps": [a.stage.value for a in audits],
+        "audit_ids": [str(a.id) for a in audits],
     }), 200
 
 

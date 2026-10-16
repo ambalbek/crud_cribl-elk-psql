@@ -132,6 +132,12 @@ def setup_app_logging(app: Flask) -> logging.Logger:
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB
 
+# Behind the OpenShift Route / ingress, TLS is terminated at the edge and the pod
+# sees plain HTTP. Trust one proxy hop so request.scheme / url_for reflect https
+# and Secure cookies are honoured.
+from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 log = setup_app_logging(app)
 
 try:
@@ -214,10 +220,23 @@ def load_config() -> dict:
 
 _startup_config = load_config()
 app.secret_key = os.environ.get("SECRET_KEY") or _startup_config.get("secret_key", "CHANGE-ME-insecure-default")
+if app.secret_key in ("CHANGE-ME-insecure-default", "change-me-in-production", "CHANGEME-GENERATE-64-CHAR-STRING"):
+    # A per-pod/default key means sessions signed by one replica are rejected by
+    # another — the user appears randomly logged out and API calls 401. Set a
+    # stable SECRET_KEY from a Secret shared across all replicas.
+    log.warning("SECRET_KEY is the insecure default — sessions will not survive "
+                "across replicas or restarts. Set SECRET_KEY from a shared Secret.")
 app.config["SESSION_COOKIE_NAME"] = "cribl_session"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Strict drops the cookie on cross-site nav back from an IdP/login
 _auth_cfg = _startup_config.get("auth", {})
+# Honour auth.secure_cookie (config.json) / SESSION_COOKIE_SECURE (env). With
+# ProxyFix the pod correctly sees the external https scheme, so Secure is safe.
+_secure_cookie = os.environ.get("SESSION_COOKIE_SECURE")
+if _secure_cookie is not None:
+    app.config["SESSION_COOKIE_SECURE"] = _secure_cookie.lower() in ("1", "true", "yes")
+else:
+    app.config["SESSION_COOKIE_SECURE"] = bool(_auth_cfg.get("secure_cookie", False))
 app.permanent_session_lifetime = timedelta(
     minutes=_auth_cfg.get("session_lifetime_minutes", 480)
 )
@@ -312,25 +331,47 @@ def local_authenticate(username, password):
 
 # ── Auth decorators ───────────────────────────────────────────────────────────
 
+def _wants_json() -> bool:
+    """True for API/XHR callers that should get a JSON 401/403, not a login redirect.
+
+    A browser navigating to an HTML page wants the login redirect; a fetch()/XHR
+    hitting /cribl/api/* wants a status code it can act on. Returning a 302 to the
+    HTML login page for an API call is what surfaces to the UI as a confusing
+    "unauthorized" (the JSON parse fails on the returned login page).
+    """
+    if request.path.startswith("/cribl/api/") or request.path.startswith("/cribl/portal/api/"):
+        return True
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return True
+    accept = request.headers.get("Accept", "")
+    return "application/json" in accept and "text/html" not in accept
+
+
 def login_required(f):
-    """Redirect to login if no valid session."""
+    """Require a valid session. JSON 401 for API callers, login redirect for pages."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("username"):
+            if _wants_json():
+                return jsonify({"error": "Authentication required", "login_url": "/cribl/login"}), 401
             return redirect(url_for("login_page", next=request.path))
         return f(*args, **kwargs)
     return decorated
 
 
 def admin_required(f):
-    """Require admin role. Redirects to login or returns 403."""
+    """Require admin role. JSON 401/403 for API callers, login redirect for pages."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("username"):
+            if _wants_json():
+                return jsonify({"error": "Authentication required", "login_url": "/cribl/login"}), 401
             return redirect(url_for("login_page", next=request.path))
         if session.get("role") != "admin":
             log.warning("Unauthorized admin access attempt by %s to %s",
                         session.get("username"), request.path)
+            if _wants_json():
+                return jsonify({"error": "Admin role required"}), 403
             return redirect(url_for("login_page", next=request.path))
         return f(*args, **kwargs)
     return decorated
@@ -417,8 +458,13 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
     Used by cribl-pusher after a successful run to mark requests as done.
     """
     apmid = None
+    psql_updated = False
 
     # ── Update PostgreSQL ─────────────────────────────────────────────────
+    # The caller may pass either the legacy request_id (REQ-YYYYMMDD-XXXX), the
+    # etn UUID, or the apm_id. Match on all three so a status change isn't lost
+    # just because the id form differs from what's stored (the common cause of
+    # "status went to success but the DB never updated").
     if _db_url:
         try:
             row = (
@@ -429,9 +475,15 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
                 row.status = status
                 apmid = row.apmid
                 db.session.commit()
+                psql_updated = True
                 log.info("PSQL status update OK — request_id=%s  apmid=%s  status=%s", request_id, apmid, status)
             else:
-                log.warning("PSQL status update — request_id=%s not found", request_id)
+                # Not in the portal's own table (e.g. ETN-mode record). Fall back
+                # to treating the passed id as an apm_id so the ES update below
+                # can still match on apmid.keyword.
+                apmid = request_id
+                log.warning("PSQL status update — request_id=%s not found; "
+                            "using it as apmid for ES/etn update", request_id)
         except Exception as exc:
             db.session.rollback()
             log.error("PSQL status update failed — %s: %s", type(exc).__name__, exc)
@@ -442,8 +494,14 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
             headers = {"Content-Type": "application/json"}
             if ETN_ONBOARDING_TOKEN:
                 headers["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
+            # Use /advance (walks the state machine through every allowed hop and
+            # is idempotent) rather than /transition (a single hop). The old
+            # single-hop POST straight to delivery_complete was illegal from any
+            # state except delivery_collection, so it always 409'd and the 409
+            # was mis-logged as "already past delivery_complete" — the etn DB
+            # status then never advanced even though ES/portal showed "done".
             etn_resp = http_client.post(
-                f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/transition",
+                f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/advance",
                 json={
                     "target_status": "delivery_complete",
                     "actor": "cribl-pusher",
@@ -454,14 +512,28 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
                 timeout=15,
             )
             if etn_resp.status_code == 200:
-                log.info("etn_onboarding transition OK — apmid=%s → delivery_complete", apmid)
+                try:
+                    _body = etn_resp.json()
+                except (ValueError, TypeError):
+                    _body = {}
+                if _body.get("advanced"):
+                    log.info("etn_onboarding advanced — apmid=%s → %s (steps=%s)",
+                             apmid, _body.get("status"), _body.get("steps"))
+                else:
+                    log.info("etn_onboarding advance no-op — apmid=%s already at/past "
+                             "delivery_complete (status=%s)", apmid, _body.get("status"))
             elif etn_resp.status_code == 409:
-                log.info("etn_onboarding transition skipped — apmid=%s already past delivery_complete", apmid)
+                # Genuinely unreachable (e.g. the request was cancelled) — this
+                # is a real problem, not "already done". Surface it.
+                log.error("etn_onboarding advance blocked — apmid=%s %d: %s",
+                          apmid, etn_resp.status_code, etn_resp.text[:200])
+            elif etn_resp.status_code == 404:
+                log.warning("etn_onboarding advance — apmid=%s not found in state machine", apmid)
             else:
-                log.warning("etn_onboarding transition failed — apmid=%s  %d: %s",
+                log.warning("etn_onboarding advance failed — apmid=%s  %d: %s",
                             apmid, etn_resp.status_code, etn_resp.text[:200])
         except Exception as exc:
-            log.warning("etn_onboarding transition error — apmid=%s: %s", apmid, exc)
+            log.warning("etn_onboarding advance error — apmid=%s: %s", apmid, exc)
     ds       = config.get("datastream", {})
     base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
     index    = ds.get("index", "logs-cribl-onboarding-requests")
@@ -516,15 +588,16 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
         if resp.status_code == 200:
             result  = resp.json()
             updated = result.get("updated", 0)
-            log.info("portal_update_status — request_id=%s  apmid=%s  status=%s  updated=%d",
-                     request_id, apmid, status, updated)
-            return {"ok": True, "updated": updated}
+            log.info("portal_update_status — request_id=%s  apmid=%s  status=%s  updated=%d  psql=%s",
+                     request_id, apmid, status, updated, psql_updated)
+            return {"ok": True, "updated": updated, "psql_updated": psql_updated}
         else:
             log.warning("portal_update_status — %d %s", resp.status_code, resp.text[:200])
-            return {"ok": False, "status_code": resp.status_code, "body": resp.text[:500]}
+            return {"ok": False, "status_code": resp.status_code, "body": resp.text[:500],
+                    "psql_updated": psql_updated}
     except Exception as exc:
         log.error("portal_update_status — failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc), "psql_updated": psql_updated}
     finally:
         # Bust catalog cache so status changes are reflected immediately
         _catalog_cache["data"] = None
@@ -2454,20 +2527,28 @@ def _build_catalog(config: dict) -> list:
         if not k.startswith("_")
     }
     creds_global = config.get("credentials", {})
+    # Fall back to CRIBL_* env vars (how ARO/K8s injects creds via Secret) when
+    # config.json has no base_url/credentials. Without this the catalog can only
+    # authenticate to Cribl from a baked-in config.json and silently skips every
+    # workspace in a cluster that supplies creds through the environment.
+    env_cribl_url   = os.environ.get("CRIBL_BASE_URL", "").strip().rstrip("/")
+    env_cribl_token = os.environ.get("CRIBL_TOKEN", "").strip()
+    env_cribl_user  = os.environ.get("CRIBL_USERNAME", "").strip()
+    env_cribl_pass  = os.environ.get("CRIBL_PASSWORD", "").strip()
     cribl_routes_cache: dict = {}  # (ws_name, wg) -> routes_obj
     _catalog_auth_cache: dict[str, tuple[http_client.Session, str]] = {}
 
     for ws_name, ws_cfg in workspaces.items():
         worker_groups = ws_cfg.get("worker_groups", [])
         routes_table  = ws_cfg.get("routes_table", "default")
-        root_url      = ws_cfg.get("base_url", config.get("base_url", "")).rstrip("/")
+        root_url      = (ws_cfg.get("base_url", "") or config.get("base_url", "") or env_cribl_url).rstrip("/")
         if not root_url:
             continue
 
         skip_ssl = ws_cfg.get("skip_ssl", config.get("skip_ssl", False))
-        ws_token = (ws_cfg.get("token", "") or creds_global.get("token", "")).strip()
-        ws_user  = (ws_cfg.get("username", "") or creds_global.get("username", "")).strip()
-        ws_pass  = (ws_cfg.get("password", "") or creds_global.get("password", "")).strip()
+        ws_token = (ws_cfg.get("token", "") or creds_global.get("token", "") or env_cribl_token).strip()
+        ws_user  = (ws_cfg.get("username", "") or creds_global.get("username", "") or env_cribl_user).strip()
+        ws_pass  = (ws_cfg.get("password", "") or creds_global.get("password", "") or env_cribl_pass).strip()
 
         # Reuse session + token for the same base URL to avoid 429 rate limiting
         cache_key = f"{root_url}|{ws_user}"
@@ -3186,14 +3267,16 @@ def cribl_run():
         except Exception as exc:
             log.warning("cribl/run — ES update failed: %s", exc)
 
-        # Advance etn_onboarding state machine
+        # Advance etn_onboarding state machine. Use /advance (idempotent, walks
+        # all allowed hops) and check the response — the old /transition call was
+        # a single illegal hop whose 409 was ignored, so the etn DB never moved.
         if ETN_ONBOARDING_URL:
             try:
                 etn_hdrs = {"Content-Type": "application/json"}
                 if ETN_ONBOARDING_TOKEN:
                     etn_hdrs["Authorization"] = f"Bearer {ETN_ONBOARDING_TOKEN}"
-                http_client.post(
-                    f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/transition",
+                _r = http_client.post(
+                    f"{ETN_ONBOARDING_URL}/api/requests/by-apm/{apmid}/advance",
                     json={
                         "target_status": "delivery_complete",
                         "actor": "cribl-run",
@@ -3202,6 +3285,9 @@ def cribl_run():
                     headers=etn_hdrs,
                     timeout=15,
                 )
+                if _r.status_code != 200:
+                    log.warning("cribl/run — etn advance returned %d: %s",
+                                _r.status_code, _r.text[:200])
             except Exception as exc:
                 log.warning("cribl/run — etn_onboarding sync failed: %s", exc)
 

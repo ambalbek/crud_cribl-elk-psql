@@ -260,3 +260,78 @@ class TestDeliveryFailed:
 
         with pytest.raises(InvalidTransitionError):
             transition_request(req, RequestStatus.delivery_failed, actor="system")
+
+
+# ── advance_to: walk to a target through all allowed hops ────────────────────
+
+from app.services.state_machine import advance_to, StatusUnreachableError
+
+
+class TestAdvanceTo:
+    """Regression tests for the provisioning-complete fix.
+
+    The portal used to POST a single-hop transition straight to
+    delivery_complete, which is illegal from any state except
+    delivery_collection, so it always 409'd and the etn DB status never
+    advanced even though ES/portal showed "done". advance_to walks the whole
+    path instead.
+    """
+
+    def test_single_hop_to_delivery_complete_is_illegal(self, app, db):
+        # Documents the original bug: this is exactly what the portal used to do.
+        req = _make_request(status=RequestStatus.intake_pending)
+        db.session.add(req)
+        db.session.flush()
+        with pytest.raises(InvalidTransitionError):
+            transition_request(req, RequestStatus.delivery_complete, actor="portal")
+
+    def test_advance_from_intake_reaches_delivery_complete(self, app, db):
+        req = _make_request(status=RequestStatus.intake_pending)
+        db.session.add(req)
+        db.session.commit()
+
+        audits = advance_to(
+            req, RequestStatus.delivery_complete,
+            actor="cribl-pusher", action="provision_complete",
+        )
+        db.session.commit()
+
+        # Reload from the DB to prove it actually persisted.
+        db.session.expire_all()
+        fresh = db.session.get(OnboardingRequest, req.id)
+        assert fresh.status == RequestStatus.delivery_complete
+        # One audit row per hop, all committed.
+        assert len(audits) == 10
+        assert AuditLog.query.filter_by(request_id=req.id).count() == 10
+
+    def test_advance_is_idempotent(self, app, db):
+        req = _make_request(status=RequestStatus.delivery_complete)
+        db.session.add(req)
+        db.session.commit()
+
+        audits = advance_to(req, RequestStatus.delivery_complete, actor="x")
+        db.session.commit()
+        assert audits == []
+        assert req.status == RequestStatus.delivery_complete
+
+    def test_advance_from_cancelled_is_blocked(self, app, db):
+        req = _make_request(status=RequestStatus.cancelled)
+        db.session.add(req)
+        db.session.commit()
+        with pytest.raises(StatusUnreachableError):
+            advance_to(req, RequestStatus.delivery_complete, actor="x")
+
+    @pytest.mark.parametrize("start", [
+        RequestStatus.intake_pending,
+        RequestStatus.solutioning,
+        RequestStatus.storage_confirmed,
+        RequestStatus.delivery_route,
+        RequestStatus.delivery_collection,
+    ])
+    def test_advance_reaches_target_from_every_pre_delivery_state(self, app, db, start):
+        req = _make_request(status=start)
+        db.session.add(req)
+        db.session.commit()
+        advance_to(req, RequestStatus.delivery_complete, actor="x")
+        db.session.commit()
+        assert req.status == RequestStatus.delivery_complete

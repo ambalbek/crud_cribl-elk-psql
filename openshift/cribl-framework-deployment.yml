@@ -84,6 +84,19 @@ spec:
                 secretKeyRef:
                   name: cribl-elk-psql-secrets
                   key: etn-onboarding-token
+            # Cribl creds for the service catalog's per-workspace login. The
+            # catalog falls back to these when config.json has no base_url/creds,
+            # so provide them here (they match cribl-service's env).
+            - name: CRIBL_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: cribl-base-url
+            - name: CRIBL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cribl-elk-psql-secrets
+                  key: cribl-token
             - name: CRIBL_SERVICE_URL
               value: "http://cribl-service:8001"
             - name: ECE_SERVICE_URL
@@ -95,18 +108,27 @@ spec:
               mountPath: /app/config.json
               subPath: config.json
               readOnly: true
+          # Startup probe covers the first boot (config load + db.create_all /
+          # column sync against Postgres). Liveness/readiness only begin once
+          # this succeeds, so a slow DB on startup doesn't crashloop the pod.
+          startupProbe:
+            httpGet:
+              path: /cribl/health
+              port: 5000
+            periodSeconds: 10
+            failureThreshold: 24
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /cribl/health
               port: 5000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 5
             periodSeconds: 30
             timeoutSeconds: 10
           livenessProbe:
             httpGet:
               path: /cribl/health
               port: 5000
-            initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 10
           resources:

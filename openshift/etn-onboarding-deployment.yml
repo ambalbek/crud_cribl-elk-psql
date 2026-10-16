@@ -50,18 +50,30 @@ spec:
               value: "http://cribl-service:8001"
             - name: ECE_SERVICE_URL
               value: "http://ece-service:8002"
-          readinessProbe:
+          # Startup probe guards the slow first boot: entrypoint.sh waits for
+          # Postgres, creates enum types and runs `flask db upgrade` BEFORE
+          # gunicorn binds the port. Without this, the liveness probe fires at
+          # 30s and crashloops the pod before migrations finish — so the schema
+          # never gets the newer enum values and status updates fail. Allows up
+          # to 5 min (30 * 10s) for migrations.
+          startupProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 5000
+            initialDelaySeconds: 5
             periodSeconds: 30
             timeoutSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 10
           resources:

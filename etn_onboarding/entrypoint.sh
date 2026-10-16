@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# `flask --app wsgi:app` and alembic's `script_location = .` resolve against the
+# current directory. The image sets WORKDIR=/app with the code under
+# /app/etn_onboarding, so cd into this script's own dir — otherwise `wsgi` is not
+# importable, `flask db upgrade` fails, and (under `set -e`) the container exits
+# before migrations ever run.
+cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
 if [ -n "$DATABASE_URL" ]; then
   echo "Waiting for Postgres..."
   until python -c "import os, psycopg2; psycopg2.connect(os.environ['DATABASE_URL'])" 2>/dev/null; do
