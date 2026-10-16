@@ -40,6 +40,7 @@ def _cfg_defaults() -> dict[str, str]:
         "CRIBL_SKIP_SSL": str(cfg.get("skip_ssl", False)).lower(),
         "CRIBL_SNAPSHOT_DIR": cfg.get("snapshot_dir", "cribl_snapshots"),
         "CRIBL_MIN_EXISTING_ROUTES": str(cfg.get("min_existing_total_routes", 1)),
+        "CRIBL_LOG_LEVEL": cfg.get("log_level", "INFO"),
     }
 
 

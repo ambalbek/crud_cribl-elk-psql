@@ -72,7 +72,7 @@ _boot_etn = _boot_cfg.get("etn_onboarding", {})
 # Microservice base URLs — env var wins, then config.json, then empty.
 CRIBL_SERVICE_URL    = (os.environ.get("CRIBL_SERVICE_URL") or _boot_etn.get("cribl_service_url", "")).rstrip("/")
 ECE_SERVICE_URL      = (os.environ.get("ECE_SERVICE_URL") or _boot_etn.get("ece_service_url", "")).rstrip("/")
-ETN_ONBOARDING_URL   = os.environ.get("ETN_ONBOARDING_URL", "").rstrip("/")
+ETN_ONBOARDING_URL   = (os.environ.get("ETN_ONBOARDING_URL") or _boot_etn.get("etn_onboarding_url", "")).rstrip("/")
 ETN_ONBOARDING_TOKEN = os.environ.get("ETN_ONBOARDING_TOKEN") or _boot_etn.get("token", "")
 
 # LDAP lookup — for portal lanId autocomplete
