@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# If DATABASE_URL env var is not set, try to read it from config.json
+if [ -z "$DATABASE_URL" ] && [ -f /app/config.json ]; then
+  DATABASE_URL=$(python -c "import json; print(json.load(open('/app/config.json')).get('etn_onboarding',{}).get('database_url',''))" 2>/dev/null || true)
+  export DATABASE_URL
+fi
+
 if [ -n "$DATABASE_URL" ]; then
   echo "Waiting for Postgres..."
   until python -c "import os, psycopg2; psycopg2.connect(os.environ['DATABASE_URL'])" 2>/dev/null; do

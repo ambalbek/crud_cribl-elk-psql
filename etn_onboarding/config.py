@@ -52,8 +52,8 @@ class Config:
     ECE_SERVICE_URL = os.environ.get(
         "ECE_SERVICE_URL", _etn.get("ece_service_url", "http://localhost:8002")
     )
-    ETN_PORTAL_URL = os.environ.get("ETN_PORTAL_URL", "")
-    ETN_PORTAL_API_KEY = os.environ.get("ETN_PORTAL_API_KEY", "")
+    ETN_PORTAL_URL = os.environ.get("ETN_PORTAL_URL", _etn.get("etn_portal_url", ""))
+    ETN_PORTAL_API_KEY = os.environ.get("ETN_PORTAL_API_KEY", _etn.get("etn_portal_api_key", ""))
 
     # OTel
     OTEL_SERVICE_NAME = os.environ.get("OTEL_SERVICE_NAME", "etn-onboarding")

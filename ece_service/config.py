@@ -28,10 +28,22 @@ def _load_config_json() -> dict:
     return {}
 
 
+def _load_root_config() -> dict:
+    """Load full config.json root."""
+    try:
+        if CONFIG_PATH.exists():
+            return json.loads(CONFIG_PATH.read_text())
+    except Exception:
+        pass
+    return {}
+
+
 def _cfg_defaults() -> dict[str, str]:
     """Extract ece-service defaults from config.json."""
-    ece = _load_config_json()
+    root = _load_root_config()
+    ece = root.get("ece", {})
     return {
+        "ECE_LOG_LEVEL": root.get("log_level", "INFO"),
         "ECE_ES_URL": ece.get("es_url", ""),
         "ECE_ES_TOKEN": ece.get("es_token", ""),
         "ECE_ES_USERNAME": ece.get("es_username", ""),
