@@ -58,9 +58,29 @@ deployment:
         secretKeyRef:
           name: cribl-elk-psql-secrets
           key: ent-es-clusters
+    # Cribl creds for the service-catalog per-workspace login (used when the
+    # mounted config.json leaves base_url/credentials empty).
+    - name: CRIBL_BASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: cribl-base-url
+    - name: CRIBL_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: cribl-token
     - name: CRIBL_SERVICE_URL
       value: http://cribl-service:8001
     - name: ECE_SERVICE_URL
       value: http://ece-service:8002
     - name: ETN_ONBOARDING_URL
       value: http://etn-onboarding:5000
+    # Bearer token the portal uses to call etn-onboarding. MUST equal the token
+    # inside etn's AUTH_LOCAL_USERS (secret key etn-auth-local-users) or every
+    # catalog fetch and post-provision transition gets 401.
+    - name: ETN_ONBOARDING_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: etn-onboarding-token

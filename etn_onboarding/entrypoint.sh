@@ -28,6 +28,13 @@ for stmt in [
     \"DO \$\$ BEGIN CREATE TYPE job_status_enum AS ENUM ('pending','running','success','failed'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;\",
 ]:
     cur.execute(stmt)
+
+# Backfill: an enum created by an older migration may lack newer values. These
+# are no-ops if the value already exists. Without them a pre-existing enum that
+# predates the storage/delivery states would reject those status commits.
+for val in ('storage_pending','storage_confirmed','delivery_destination','delivery_pack','delivery_route','delivery_collection','delivery_routing','delivery_storage','delivery_complete','delivery_failed','validation','reverify','complete','cancelled'):
+    cur.execute(\"ALTER TYPE request_status_enum ADD VALUE IF NOT EXISTS %s\" % repr(val))
+
 cur.close()
 conn.close()
 print('Enum types ready.')

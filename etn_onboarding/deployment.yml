@@ -17,6 +17,17 @@ deployment:
         secretKeyRef:
           name: cribl-elk-psql-secrets
           key: secret-key
+    # Auth. Without AUTH_LOCAL_USERS, LocalVerifier loads zero users and every
+    # bearer token (including the portal's) is rejected 401 — which breaks the
+    # catalog AND silently blocks the post-provision state transition. The token
+    # inside etn-auth-local-users MUST equal the portal's etn-onboarding-token.
+    - name: AUTH_BACKEND
+      value: "local"
+    - name: AUTH_LOCAL_USERS
+      valueFrom:
+        secretKeyRef:
+          name: cribl-elk-psql-secrets
+          key: etn-auth-local-users
     - name: CRIBL_SERVICE_URL
       value: http://cribl-service:8001
     - name: ECE_SERVICE_URL

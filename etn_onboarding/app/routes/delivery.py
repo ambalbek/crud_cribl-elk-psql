@@ -23,6 +23,42 @@ def _get_request_or_404(request_id):
     return onboarding_req
 
 
+def _commit_delivery(request_id, job, onboarding_req, previous_status) -> bool:
+    """Commit a delivery result, guarding against the commit itself failing.
+
+    The commit was previously outside the try/except that wrapped the external
+    call, so a DB error at commit (e.g. an enum/DataError, or a transient blip)
+    rolled back the whole transaction — including ``job.status = "success"`` —
+    and surfaced as an uncaught 500, leaving no record. The job then looked
+    "stuck" and the request status never advanced.
+
+    On commit failure this rolls back, reverts the request to its prior status,
+    and records the job as failed in a fresh transaction so there is an audit
+    trail of what happened. Returns True on success, False otherwise.
+    """
+    try:
+        db.session.commit()
+        return True
+    except Exception:
+        logger.exception("Delivery commit failed: request_id=%s job_id=%s", request_id, job.id)
+        db.session.rollback()
+        # Best-effort: persist the job as failed so it isn't silently lost.
+        try:
+            fresh = db.session.get(OnboardingRequest, onboarding_req.id)
+            if fresh is not None:
+                fresh.status = previous_status
+            job_fresh = db.session.get(DeliveryJob, job.id)
+            if job_fresh is not None:
+                job_fresh.status = "failed"
+                job_fresh.result = {"error": "commit failed — see service logs"}
+                job_fresh.completed_at = datetime.now(timezone.utc)
+            db.session.commit()
+        except Exception:
+            logger.exception("Delivery failure-record also failed: request_id=%s", request_id)
+            db.session.rollback()
+        return False
+
+
 @delivery_bp.route("/<uuid:request_id>/collection", methods=["POST"])
 @require_role("platform_admin")
 def trigger_collection(request_id):
@@ -71,7 +107,8 @@ def trigger_collection(request_id):
         job.completed_at = datetime.now(timezone.utc)
         onboarding_req.status = previous_status
 
-    db.session.commit()
+    if not _commit_delivery(request_id, job, onboarding_req, previous_status):
+        return jsonify({"error": "Failed to persist delivery result", "job_id": str(job.id)}), 500
 
     logger.info("Collection job completed: request_id=%s job_id=%s status=%s", request_id, job.id, job.status)
 
@@ -132,7 +169,8 @@ def trigger_routing(request_id):
         job.completed_at = datetime.now(timezone.utc)
         onboarding_req.status = previous_status
 
-    db.session.commit()
+    if not _commit_delivery(request_id, job, onboarding_req, previous_status):
+        return jsonify({"error": "Failed to persist delivery result", "job_id": str(job.id)}), 500
 
     logger.info("Routing job completed: request_id=%s job_id=%s status=%s", request_id, job.id, job.status)
 
