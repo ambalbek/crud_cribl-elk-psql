@@ -23,6 +23,18 @@
 
   "auth": {
     "session_lifetime_minutes": 480,
+    "roles": {
+      "admin":      { "description": "Full access to all pages and APIs", "pages": ["*"] },
+      "developer":  { "description": "Onboarding portal, catalog, entitlements", "pages": ["portal", "catalog", "entitlements"] },
+      "compliance": { "description": "Compliance tracker and catalog", "pages": ["compliance", "catalog"] },
+      "user":       { "description": "Portal and entitlements only", "pages": ["portal", "entitlements"] }
+    },
+    "ad_group_mapping": {
+      "_comment": "Maps AD/LDAP group DNs to local roles. Used when LDAP auth is enabled.",
+      "CN=CriblAdmins,OU=Groups,DC=corp,DC=example,DC=com": "admin",
+      "CN=CriblDevelopers,OU=Groups,DC=corp,DC=example,DC=com": "developer",
+      "CN=CriblCompliance,OU=Groups,DC=corp,DC=example,DC=com": "compliance"
+    },
     "local_admins": [
       {
         "username": "admin",
@@ -30,7 +42,10 @@
         "display_name": "Local Admin"
       }
     ],
-    "local_users": []
+    "local_users": [
+      { "username": "dev1", "password": "dev1", "display_name": "Developer", "role": "developer" },
+      { "username": "auditor", "password": "auditor", "display_name": "Auditor", "role": "compliance" }
+    ]
   },
 
   "route_templates": {

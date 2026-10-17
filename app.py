@@ -177,12 +177,17 @@ except ImportError:
 # ── Request lifecycle hooks ────────────────────────────────────────────────────
 
 @app.context_processor
-def inject_user():
+def inject_user() -> dict:
     """Make current user info available in all templates."""
+    role = session.get("role")
+    role_pages: set[str] = set()
+    if role:
+        role_pages = _get_role_pages(role)
     return {
         "current_user": session.get("username"),
-        "current_role": session.get("role"),
+        "current_role": role,
         "current_display_name": session.get("display_name"),
+        "current_pages": role_pages,
     }
 
 
@@ -337,10 +342,53 @@ def local_authenticate(username, password):
 
     for local_user in users:
         if local_user.get("username") == username and local_user.get("password") == password:
-            log.info("Local user auth OK — user=%s", username)
-            return True, "user", local_user.get("display_name", username)
+            user_role = local_user.get("role", "user")
+            log.info("Local user auth OK — user=%s role=%s", username, user_role)
+            return True, user_role, local_user.get("display_name", username)
 
     return False, None, "Invalid credentials."
+
+
+# ── RBAC helpers ─────────────────────────────────────────────────────────────
+
+_ROLE_DEFAULTS: dict[str, set[str]] = {
+    "admin": {"*"},
+    "user":  {"portal", "entitlements"},
+}
+
+_LANDING_PRIORITY: list[tuple[str, str]] = [
+    ("portal",      "/cribl/portal"),
+    ("catalog",     "/cribl/catalog"),
+    ("compliance",  "/cribl/compliance"),
+    ("entitlements", "/cribl/entitlements"),
+]
+
+
+def _get_role_pages(role: str) -> set[str]:
+    """Return the set of page names a role can access."""
+    try:
+        config = load_config()
+    except Exception:
+        config = {}
+    roles_cfg = config.get("auth", {}).get("roles", {})
+    role_def = roles_cfg.get(role, {})
+    pages = role_def.get("pages", [])
+    if "*" in pages:
+        return {"*"}
+    if pages:
+        return set(pages)
+    return _ROLE_DEFAULTS.get(role, {"portal", "entitlements"})
+
+
+def _default_landing_for_role(role: str) -> str:
+    """Pick the best landing page for a given role."""
+    pages = _get_role_pages(role)
+    if "*" in pages:
+        return "/cribl/"
+    for page, url in _LANDING_PRIORITY:
+        if page in pages:
+            return url
+    return "/cribl/portal"
 
 
 # ── Auth decorators ───────────────────────────────────────────────────────────
@@ -355,18 +403,24 @@ def login_required(f):
     return decorated
 
 
-def admin_required(f):
-    """Require admin role. Redirects to login or returns 403."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get("username"):
-            return redirect(url_for("login_page", next=request.path))
-        if session.get("role") != "admin":
-            log.warning("Unauthorized admin access attempt by %s to %s",
-                        session.get("username"), request.path)
-            return redirect(url_for("login_page", next=request.path))
-        return f(*args, **kwargs)
-    return decorated
+def role_required(*page_names: str):
+    """Require that the session role can access at least one of the named pages."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not session.get("username"):
+                return redirect(url_for("login_page", next=request.path))
+            role = session.get("role", "user")
+            role_pages = _get_role_pages(role)
+            if "*" in role_pages:
+                return f(*args, **kwargs)
+            if not any(p in role_pages for p in page_names):
+                log.warning("RBAC denied: user=%s role=%s required=%s path=%s",
+                            session.get("username"), role, page_names, request.path)
+                return redirect(url_for("login_page", next=request.path))
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 
 def run_subprocess(cmd: list, masked: str = "") -> tuple:
@@ -1022,10 +1076,9 @@ def login_submit():
             session["display_name"] = display_name_or_error
             log.info("Local login OK — user=%s role=%s from %s", username, role, request.remote_addr)
 
-            user_allowed = ("/cribl/portal", "/cribl/portal/", "/cribl/portal/api/submit", "/cribl/api/submit",
-                            "/cribl/entitlements", "/cribl/entitlements/", "/cribl/api/entitlements")
-            if role == "user" and next_url not in user_allowed:
-                next_url = "/cribl/portal"
+            role_pages = _get_role_pages(role)
+            if "*" not in role_pages:
+                next_url = _default_landing_for_role(role)
             return redirect(next_url)
 
         # Password was provided but wrong — reject
@@ -1033,17 +1086,24 @@ def login_submit():
         return render_template("login.html",
                                error=display_name_or_error, next=next_url)
 
-    # No password — allow as regular user (portal access only)
+    # No password — allow as regular user; check if a local_users entry exists with a role
+    try:
+        config = load_config()
+    except Exception:
+        config = {}
+    matched_role = "user"
+    for lu in config.get("auth", {}).get("local_users", []):
+        if lu.get("username") == username and not lu.get("password"):
+            matched_role = lu.get("role", "user")
+            break
+
     session.permanent = True
     session["username"] = username
-    session["role"] = "user"
+    session["role"] = matched_role
     session["display_name"] = username
-    log.info("User login (no password) OK — user=%s from %s", username, request.remote_addr)
+    log.info("User login (no password) OK — user=%s role=%s from %s", username, matched_role, request.remote_addr)
 
-    user_allowed = ("/cribl/portal", "/cribl/portal/", "/cribl/portal/api/submit", "/cribl/api/submit",
-                    "/cribl/entitlements", "/cribl/entitlements/", "/cribl/api/entitlements")
-    if next_url not in user_allowed:
-        next_url = "/cribl/portal"
+    next_url = _default_landing_for_role(matched_role)
     return redirect(next_url)
 
 
@@ -1062,9 +1122,11 @@ def logout():
 @app.route("/cribl/")
 @login_required
 def landing():
-    if session.get("role") == "user":
-        return redirect(url_for("portal_index"))
-    return render_template("index.html")
+    role = session.get("role", "user")
+    pages = _get_role_pages(role)
+    if "*" in pages:
+        return render_template("index.html")
+    return redirect(_default_landing_for_role(role))
 
 
 @app.route("/cribl/health")
@@ -1078,7 +1140,7 @@ def health():
 
 @app.route("/cribl/portal")
 @app.route("/cribl/portal/")
-@login_required
+@role_required("portal")
 def portal_index():
     config = load_config()
     return render_template(
@@ -1091,7 +1153,7 @@ def portal_index():
 
 @app.route("/cribl/portal/api/submit", methods=["POST"])
 @app.route("/cribl/api/submit", methods=["POST"])
-@login_required
+@role_required("portal")
 def portal_submit():
     log.debug("submit — Content-Type: %s  body: %s",
               request.content_type, request.get_data(as_text=True)[:500])
@@ -1243,7 +1305,12 @@ def portal_submit():
             try:
                 existing = _find_onboarding_row(app_id)
                 if existing:
-                    log.info("PSQL skip — apm_id=%s already exists (id=%s)", app_id, existing.id)
+                    if elk_capacity and not existing.elk_capacity:
+                        existing.elk_capacity = elk_capacity
+                        db.session.commit()
+                        log.info("PSQL elk_capacity updated — apm_id=%s", app_id)
+                    else:
+                        log.info("PSQL skip — apm_id=%s already exists (id=%s)", app_id, existing.id)
                 else:
                     import uuid
                     row = OnboardingRequest(
@@ -1560,13 +1627,13 @@ def health_elk():
 
 @app.route("/cribl/entitlements")
 @app.route("/cribl/entitlements/")
-@login_required
+@role_required("entitlements")
 def entitlements_page():
     return render_template("entitlements.html")
 
 
 @app.route("/cribl/api/entitlements")
-@login_required
+@role_required("entitlements")
 def api_entitlements():
     try:
         config = load_config()
@@ -1627,16 +1694,9 @@ def root_redirect():
     return redirect("/cribl/")
 
 
-@app.route("/cribl")
-@app.route("/cribl/")
-@admin_required
-def cribl_landing():
-    return render_template("index.html")
-
-
 @app.route("/cribl/app")
 @app.route("/cribl/app/")
-@admin_required
+@role_required("pusher")
 def cribl_app_page():
     try:
         config = load_config()
@@ -1651,7 +1711,7 @@ def cribl_app_page():
 
 
 @app.route("/cribl/api/run-pusher", methods=["POST"])
-@admin_required
+@role_required("pusher")
 def run_pusher():
     form       = request.form
     file       = request.files.get("appfile")
@@ -1846,7 +1906,7 @@ def run_pusher():
 
 
 @app.route("/cribl/api/destinations/<worker_group>/<destination_id>", methods=["GET"])
-@admin_required
+@role_required("pusher")
 def get_destination(worker_group: str, destination_id: str):
     """Fetch a single destination from cribl_service or direct Cribl API."""
     _global_skip = load_config().get("skip_ssl", False)
@@ -1872,7 +1932,7 @@ def get_destination(worker_group: str, destination_id: str):
 
 
 @app.route("/cribl/api/patch-destination", methods=["POST"])
-@admin_required
+@role_required("pusher")
 def patch_destination():
     """Patch (partial update) an existing Cribl destination via cribl_service."""
     data = request.get_json(silent=True) or {}
@@ -1942,7 +2002,7 @@ def patch_destination():
 
 
 @app.route("/cribl/api/destinations/<worker_group>", methods=["GET"])
-@admin_required
+@role_required("pusher")
 def list_destinations(worker_group: str):
     """List all destinations for a worker group."""
     _global_skip = load_config().get("skip_ssl", False)
@@ -1971,7 +2031,7 @@ def list_destinations(worker_group: str):
 
 
 @app.route("/cribl/api/bulk-patch-destinations", methods=["POST"])
-@admin_required
+@role_required("pusher")
 def bulk_patch_destinations():
     """Patch multiple destinations in one call.
 
@@ -2079,7 +2139,7 @@ def bulk_patch_destinations():
 
 
 @app.route("/cribl/api/run-role-rm", methods=["POST"])
-@admin_required
+@role_required("pusher")
 def run_role_rm():
     form       = request.form
     file       = request.files.get("appfile")
@@ -2597,6 +2657,7 @@ def _build_catalog(config: dict) -> list:
         lan_id       = (doc.get("lan_id")           or "").strip()
         timestamp    = (doc.get("@timestamp")       or "").strip()
         entitlements = doc.get("entitlement_groups") or []
+        log_destinations = doc.get("log_destinations") or []
 
         # Resolve worker group and workspace from region
         matched_wg = ""
@@ -2659,6 +2720,7 @@ def _build_catalog(config: dict) -> list:
             "kibana_dashboard": None,
             "roles":            role_count,
             "entitlements":     entitlements,
+            "log_destinations": log_destinations,
             "status":           status,
             "submitted_by":     lan_id,
             "date":             timestamp,
@@ -2670,7 +2732,7 @@ def _build_catalog(config: dict) -> list:
 
 @app.route("/cribl/catalog")
 @app.route("/cribl/catalog/")
-@login_required
+@role_required("catalog")
 def catalog_page():
     try:
         config = load_config()
@@ -2687,8 +2749,185 @@ def catalog_page():
     return render_template("catalog.html", workspaces=ws_options)
 
 
+# ── Compliance tracker ────────────────────────────────────────────────────────
+
+
+@app.route("/cribl/compliance")
+@app.route("/cribl/compliance/")
+@role_required("compliance")
+def compliance_page():
+    return render_template("compliance.html")
+
+
+@app.route("/cribl/api/compliance")
+@role_required("compliance")
+def api_compliance():
+    """Return audit log entries joined with onboarding request info.
+    Query params: from, to (ISO dates), status, action, q (search)."""
+    if not _db_url:
+        return jsonify({"errors": ["Database not configured"]}), 503
+
+    from sqlalchemy import text
+
+    clauses = ["1=1"]
+    params: dict = {}
+
+    date_from = request.args.get("from", "").strip()
+    date_to = request.args.get("to", "").strip()
+    status = request.args.get("status", "").strip()
+    action = request.args.get("action", "").strip()
+    q = request.args.get("q", "").strip().lower()
+
+    if date_from:
+        clauses.append("a.created_at >= :date_from")
+        params["date_from"] = date_from
+    if date_to:
+        clauses.append("a.created_at <= CAST(:date_to AS timestamp) + interval '1 day'")
+        params["date_to"] = date_to
+    if status:
+        clauses.append("a.stage = :status")
+        params["status"] = status
+    if action:
+        clauses.append("a.action = :action")
+        params["action"] = action
+
+    where = " AND ".join(clauses)
+    sql = f"""
+        SELECT a.id, a.stage, a.action, a.actor, a.outcome,
+               a.metadata, a.created_at,
+               r.apm_id, r.app_name, r.region, r.status AS request_status,
+               r.team, r.data_type
+        FROM audit_logs a
+        JOIN onboarding_requests r ON a.request_id = r.id
+        WHERE {where}
+        ORDER BY a.created_at DESC
+        LIMIT 2000
+    """
+
+    try:
+        result = db.session.execute(text(sql), params)
+        cols = list(result.keys())
+        rows = []
+        for r in result:
+            row = {}
+            for i, col in enumerate(cols):
+                val = r[i]
+                if hasattr(val, "isoformat"):
+                    val = val.isoformat()
+                elif isinstance(val, (dict, list)):
+                    pass
+                elif val is not None:
+                    val = str(val)
+                row[col] = val
+            if q and not any(q in str(v or "").lower() for v in row.values()):
+                continue
+            rows.append(row)
+
+        # Gather distinct values for filters
+        actions_result = db.session.execute(text(
+            "SELECT DISTINCT action FROM audit_logs ORDER BY action"
+        ))
+        actions = [r[0] for r in actions_result]
+
+        stages_result = db.session.execute(text(
+            "SELECT DISTINCT stage FROM audit_logs ORDER BY stage"
+        ))
+        stages = [str(r[0]) for r in stages_result]
+
+        return jsonify({
+            "rows": rows,
+            "total": len(rows),
+            "filters": {"actions": actions, "stages": stages},
+        })
+    except Exception as exc:
+        log.error("compliance query failed: %s", exc)
+        return jsonify({"errors": [str(exc)]}), 500
+
+
+# ── Database browser ─────────────────────────────────────────────────────────
+
+_DB_BROWSABLE_TABLES = frozenset({
+    "onboarding_requests", "pack_registry", "audit_logs", "delivery_jobs",
+})
+
+
+@app.route("/cribl/database")
+@app.route("/cribl/database/")
+@role_required("database")
+def database_page():
+    return render_template("database.html")
+
+
+@app.route("/cribl/api/db/tables")
+@role_required("database")
+def api_db_tables():
+    """Return list of browsable table names."""
+    if not _db_url:
+        return jsonify({"errors": ["Database not configured"]}), 503
+    from sqlalchemy import text
+    try:
+        result = db.session.execute(text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
+            "ORDER BY table_name"
+        ))
+        tables = [r[0] for r in result if r[0] in _DB_BROWSABLE_TABLES]
+        return jsonify(tables)
+    except Exception as exc:
+        return jsonify({"errors": [str(exc)]}), 500
+
+
+@app.route("/cribl/api/db/table/<table_name>")
+@role_required("database")
+def api_db_table_rows(table_name: str):
+    """Return rows from a browsable table (max 500)."""
+    if not _db_url:
+        return jsonify({"errors": ["Database not configured"]}), 503
+    if table_name not in _DB_BROWSABLE_TABLES:
+        return jsonify({"errors": [f"Table '{table_name}' is not browsable"]}), 403
+    limit = min(int(request.args.get("limit", 500)), 2000)
+    offset = int(request.args.get("offset", 0))
+    from sqlalchemy import text
+    try:
+        # Get column names
+        col_result = db.session.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :t "
+            "ORDER BY ordinal_position"
+        ), {"t": table_name})
+        columns = [r[0] for r in col_result]
+
+        # Get rows
+        row_result = db.session.execute(text(
+            f"SELECT * FROM {table_name} ORDER BY 1 DESC LIMIT :lim OFFSET :off"
+        ), {"lim": limit, "off": offset})
+        rows = []
+        for r in row_result:
+            row = {}
+            for i, col in enumerate(columns):
+                val = r[i]
+                if hasattr(val, "isoformat"):
+                    val = val.isoformat()
+                elif isinstance(val, (dict, list)):
+                    pass  # JSON-safe already
+                elif val is not None:
+                    val = str(val)
+                row[col] = val
+            rows.append(row)
+
+        # Get total count
+        count_result = db.session.execute(text(
+            f"SELECT COUNT(*) FROM {table_name}"
+        ))
+        total = count_result.scalar()
+
+        return jsonify({"columns": columns, "rows": rows, "total": total})
+    except Exception as exc:
+        return jsonify({"errors": [str(exc)]}), 500
+
+
 @app.route("/cribl/api/catalog/refresh", methods=["POST"])
-@admin_required
+@role_required("offboard")
 def api_catalog_refresh():
     """Bust the catalog cache and force a rebuild on next request."""
     with _catalog_cache_lock:
@@ -2699,7 +2938,7 @@ def api_catalog_refresh():
 
 
 @app.route("/cribl/api/catalog")
-@login_required
+@role_required("catalog")
 def api_catalog():
     # ?refresh=true busts the cache inline
     force_refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
@@ -2730,7 +2969,7 @@ def api_catalog():
 
 
 @app.route("/cribl/api/onboarding-requests")
-@login_required
+@role_required("catalog", "portal")
 def api_onboarding_requests():
     """Return all onboarding requests. Local PSQL is the primary source;
     etn_onboarding supplements records that are only in the state machine."""
@@ -2798,7 +3037,7 @@ def api_onboarding_requests():
 
 
 @app.route("/cribl/api/catalog/<apm_id>", methods=["DELETE"])
-@admin_required
+@role_required("offboard")
 def api_catalog_delete(apm_id):
     """
     Offboard an app:
@@ -3105,7 +3344,7 @@ def api_catalog_delete(apm_id):
 
 
 @app.route("/cribl/run", methods=["POST"])
-@admin_required
+@role_required("pusher")
 def cribl_run():
     """
     Lightweight re-onboard trigger from the Service Catalog.

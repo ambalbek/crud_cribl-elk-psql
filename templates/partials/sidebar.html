@@ -55,22 +55,40 @@
 
   <p class="cf-nav-label">Platform</p>
   <nav class="cf-nav">
+    {% if '*' in current_pages or 'catalog' in current_pages %}
     <a href="{{ url_for('catalog_page') }}" class="{{ 'cf-active' if nav_active == 'catalog' else '' }}">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       Catalog
     </a>
+    {% endif %}
+    {% if '*' in current_pages or 'portal' in current_pages %}
     <a href="{{ url_for('portal_index') }}" class="{{ 'cf-active' if nav_active == 'onboarding' else '' }}">
       <svg viewBox="0 0 24 24"><path d="M12 3l9 4.5v9L12 21 3 16.5v-9L12 3z"/><path d="M12 12l9-4.5M12 12v9M12 12L3 7.5"/></svg>
       Onboarding
     </a>
+    {% endif %}
+    {% if '*' in current_pages or 'entitlements' in current_pages %}
     <a href="{{ url_for('entitlements_page') }}" class="{{ 'cf-active' if nav_active == 'entitlements' else '' }}">
       <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
       Entitlements
     </a>
-    {% if current_role == 'admin' %}
+    {% endif %}
+    {% if '*' in current_pages or 'compliance' in current_pages %}
+    <a href="{{ url_for('compliance_page') }}" class="{{ 'cf-active' if nav_active == 'compliance' else '' }}">
+      <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
+      Compliance
+    </a>
+    {% endif %}
+    {% if '*' in current_pages or 'pusher' in current_pages %}
     <a href="{{ url_for('cribl_app_page') }}" class="{{ 'cf-active' if nav_active == 'pusher' else '' }}">
       <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
       Pusher
+    </a>
+    {% endif %}
+    {% if '*' in current_pages or 'database' in current_pages %}
+    <a href="{{ url_for('database_page') }}" class="{{ 'cf-active' if nav_active == 'database' else '' }}">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+      Database
     </a>
     {% endif %}
   </nav>

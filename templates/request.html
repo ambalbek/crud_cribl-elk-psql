@@ -306,7 +306,7 @@
         <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
         Entitlements
       </a>
-      {% if current_role == 'admin' %}
+      {% if '*' in current_pages or 'pusher' in current_pages %}
       <a href="{{ url_for('cribl_app_page') }}">
         <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
         Pusher
