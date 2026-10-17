@@ -7,35 +7,33 @@ Env vars with ECE_ prefix still take precedence when set.
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from config_resolver import resolve_config
 
 logger = logging.getLogger("ece-service")
 
 CONFIG_PATH = Path(os.environ.get("APP_CONFIG_PATH", "/app/config.json"))
 
 
-def _load_config_json() -> dict:
-    """Load config.json and return the ece section."""
-    try:
-        if CONFIG_PATH.exists():
-            data = json.loads(CONFIG_PATH.read_text())
-            return data.get("ece", {})
-    except Exception as exc:
-        logger.warning("Failed to read %s: %s", CONFIG_PATH, exc)
-    return {}
-
-
 def _load_root_config() -> dict:
-    """Load full config.json root."""
+    """Load full config.json root with globals resolved."""
     try:
         if CONFIG_PATH.exists():
-            return json.loads(CONFIG_PATH.read_text())
+            return resolve_config(json.loads(CONFIG_PATH.read_text()))
     except Exception:
         pass
     return {}
+
+
+def _load_config_json() -> dict:
+    """Load config.json and return the ece section."""
+    return _load_root_config().get("ece", {})
 
 
 def _cfg_defaults() -> dict[str, str]:

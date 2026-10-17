@@ -7,10 +7,15 @@ Env vars with CRIBL_ prefix still take precedence when set.
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Make project root importable for config_resolver
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from config_resolver import resolve_config
 
 logger = logging.getLogger("cribl-service")
 
@@ -18,11 +23,10 @@ CONFIG_PATH = Path(os.environ.get("APP_CONFIG_PATH", "/app/config.json"))
 
 
 def _load_config_json() -> dict:
-    """Load config.json and return the relevant section for cribl-service."""
+    """Load config.json, resolve globals, return root."""
     try:
         if CONFIG_PATH.exists():
-            data = json.loads(CONFIG_PATH.read_text())
-            return data
+            return resolve_config(json.loads(CONFIG_PATH.read_text()))
     except Exception as exc:
         logger.warning("Failed to read %s: %s", CONFIG_PATH, exc)
     return {}

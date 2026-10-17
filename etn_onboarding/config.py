@@ -6,7 +6,17 @@ Reads from /app/config.json (mounted from Secret) with env-var overrides.
 import json
 import logging
 import os
+import sys
 from pathlib import Path
+
+# Make config_resolver importable — it lives at /app/config_resolver.py
+# alongside the etn_onboarding/ package.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+try:
+    from config_resolver import resolve_config
+except ImportError:
+    def resolve_config(x):
+        return x
 
 logger = logging.getLogger("etn-onboarding")
 
@@ -14,10 +24,10 @@ CONFIG_PATH = Path(os.environ.get("APP_CONFIG_PATH", "/app/config.json"))
 
 
 def _load_config_json() -> dict:
-    """Load the etn_onboarding section from config.json."""
+    """Load the etn_onboarding section from config.json with globals resolved."""
     try:
         if CONFIG_PATH.exists():
-            data = json.loads(CONFIG_PATH.read_text())
+            data = resolve_config(json.loads(CONFIG_PATH.read_text()))
             return data.get("etn_onboarding", {})
     except Exception as exc:
         logger.warning("Failed to read %s: %s", CONFIG_PATH, exc)

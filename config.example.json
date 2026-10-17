@@ -1,46 +1,36 @@
 {
-  "_comment": "Cribl pusher configuration. Store this file securely — it may contain credentials.",
+  "_comment": "Cribl Framework config. Use 'globals' for shared values — sections inherit and can override.",
 
-  "log_level": "INFO",
-  "log_format": "text",
-
-  "cribl_service_url": "http://cribl-service:8001",
-  "ece_service_url": "http://ece-service:8002",
-  "etn_onboarding_url": "http://etn-onboarding:5000",
-
-  "secret_key": "CHANGE_ME_GENERATE_A_RANDOM_64_CHAR_STRING",
+  "globals": {
+    "log_level": "INFO",
+    "log_format": "text",
+    "skip_ssl": false,
+    "secret_key": "CHANGE_ME_GENERATE_A_RANDOM_64_CHAR_STRING",
+    "database_url": "postgresql://user:pass@postgres-host:5432/etn_onboarding",
+    "elasticsearch_url": "https://elasticsearch-host:9200",
+    "elasticsearch_token": "",
+    "elasticsearch_username": "elastic",
+    "elasticsearch_password": "CHANGE_ME",
+    "cribl_url": "https://cribl-stream-host:9000",
+    "cribl_token": "",
+    "cribl_username": "admin",
+    "cribl_password": "CHANGE_ME",
+    "cribl_service_url": "http://cribl-service:8001",
+    "ece_service_url": "http://ece-service:8002",
+    "etn_onboarding_url": "http://etn-onboarding:5000",
+    "inter_service_token": "CHANGE_ME"
+  },
 
   "auth": {
-    "_comment": "Local authentication with role-based access control.",
     "session_lifetime_minutes": 480,
     "local_admins": [
       {
-        "_comment": "Admin accounts — full access to all pages.",
         "username": "admin",
-        "password": "CHANGE_ME_TO_A_STRONG_PASSWORD",
+        "password": "CHANGE_ME",
         "display_name": "Local Admin"
       }
     ],
-    "local_users": [
-      {
-        "_comment": "User accounts — access to Portal and Entitlements only.",
-        "username": "user",
-        "password": "user123",
-        "display_name": "Test User"
-      }
-    ]
-  },
-
-  "base_url": "http://127.0.0.1:9000",
-  "cribl_urls": ["http://127.0.0.1:9000"],
-  "elk_urls": [],
-  "skip_ssl": false,
-
-  "credentials": {
-    "_comment": "Leave token empty to use username+password login. CLI flags and env vars override these.",
-    "token": "",
-    "username": "admin",
-    "password": "password"
+    "local_users": []
   },
 
   "route_templates": {
@@ -56,46 +46,16 @@
   "diff_lines": 3,
 
   "workspaces": {
-    "trec_dev": {
-      "worker_groups": [
-        "default"
-      ],
-      "dest_templates": {
-        "azn": "blob_dest_template_azn_dev.json",
-        "azs": "blob_dest_template_azs_dev.json"
-      },
-      "description": "Development workspace"
-    },
     "dev": {
-      "worker_groups": [
-        "default","wg-dev-01", "wg-dev-02", "wg-dev-03", "wg-dev-04",
-        "wg-dev-05", "wg-dev-06", "wg-dev-07", "wg-dev-08",
-        "wg-dev-09", "wg-dev-10", "wg-dev-11", "wg-dev-12"
-      ],
+      "worker_groups": ["default"],
       "dest_templates": {
         "azn": "blob_dest_template_azn_dev.json",
         "azs": "blob_dest_template_azs_dev.json"
       },
       "description": "Development workspace"
-    },
-    "test": {
-      "worker_groups": [
-        "wg-test-01", "wg-test-02", "wg-test-03", "wg-test-04",
-        "wg-test-05", "wg-test-06", "wg-test-07", "wg-test-08",
-        "wg-test-09", "wg-test-10", "wg-test-11", "wg-test-12"
-      ],
-      "dest_templates": {
-        "azn": "blob_dest_template_azn_test.json",
-        "azs": "blob_dest_template_azs_test.json"
-      },
-      "description": "Test workspace"
     },
     "prod": {
-      "worker_groups": [
-        "wg-prod-01", "wg-prod-02", "wg-prod-03", "wg-prod-04",
-        "wg-prod-05", "wg-prod-06", "wg-prod-07", "wg-prod-08",
-        "wg-prod-09", "wg-prod-10", "wg-prod-11", "wg-prod-12"
-      ],
+      "worker_groups": ["wg-prod-01"],
       "dest_templates": {
         "azn": "blob_dest_template_azn_prod.json",
         "azs": "blob_dest_template_azs_prod.json"
@@ -106,92 +66,49 @@
   },
 
   "ldap": {
-    "_comment": "LDAP settings for portal lanId autocomplete. Env vars LDAP_SERVER, LDAP_BIND_DN, LDAP_BIND_PW, LDAP_BASE_DN override these.",
-    "server":  "ldaps://ldap.corp.example.com:636",
+    "server": "ldaps://ldap.corp.example.com:636",
     "bind_dn": "CN=svc-cribl,OU=ServiceAccounts,DC=corp,DC=example,DC=com",
     "bind_pw": "CHANGE_ME",
     "base_dn": "DC=corp,DC=example,DC=com",
     "use_ssl": true
   },
 
-  "admin_secret": "CHANGE_ME_TO_A_STRONG_RANDOM_STRING",
-
   "iiq_url": "https://iiq.company.com/MOYAACESS",
   "dynatrace_url": "https://dynatrace.company.com/questionnaire",
 
-  "database": {
-    "_comment": "PostgreSQL connection for persisting onboarding requests.",
-    "url": "postgresql://cribl:cribl@127.0.0.1:5432/cribl"
-  },
-
   "datastream": {
-    "_comment": "Elasticsearch datastream where onboarding requests are stored and status is updated.",
-    "elk_url":  "http://127.0.0.1:9200",
-    "token":    "",
-    "username": "elastic",
-    "password": "changeme",
-    "index":    "cribl-onboarding-requests",
-    "skip_ssl": true,
-    "timeout":  30
+    "_comment": "Only overrides needed — url/creds come from globals",
+    "index": "cribl-onboarding-requests",
+    "timeout": 30
   },
 
   "entitlement": {
-    "_comment": "Elasticsearch clusters for entitlement lookup (role mappings). Used by /entitlements page.",
+    "_comment": "Cluster url/creds come from globals. Add multiple clusters to override.",
     "clusters": [
+      { "name": "nonprod" },
       {
-        "name": "lab",
-        "url": "http://127.0.0.1:9200",
-        "token": "",
-        "username": "elastic",
-        "password": "changeme",
-        "skip_ssl": true
+        "name": "prod",
+        "url": "https://prod-es-host:9200",
+        "token": "PROD_API_KEY",
+        "skip_ssl": false
       }
     ],
     "entitlementFilter": "entitlements"
   },
 
   "ece": {
-    "_comment": "ECE service — Elasticsearch and Kibana connections.",
-    "es_url": "http://127.0.0.1:9200",
-    "es_token": "",
-    "es_username": "elastic",
-    "es_password": "changeme",
-    "es_url_prod": "",
-    "es_token_prod": "",
-    "es_username_prod": "",
-    "es_password_prod": "",
-    "kibana_url": "",
-    "kibana_token": "",
-    "kibana_username": "",
-    "kibana_password": "",
-    "skip_ssl": true,
+    "_comment": "Nonprod url/creds come from globals. Only prod overrides needed.",
+    "es_url_prod": "https://prod-es-host:9200",
+    "es_token_prod": "PROD_API_KEY",
     "timeout": 60,
     "templates_dir": "ops_rm_r_templates_output"
   },
 
   "etn_onboarding": {
-    "_comment": "ETN onboarding service settings.",
-    "database_url": "postgresql://etn_user:etn_pass@etn_postgres:5432/etn_onboarding",
-    "secret_key": "CHANGE_ME_GENERATE_A_RANDOM_64_CHAR_STRING",
+    "_comment": "Most values come from globals. Only auth config is section-specific.",
     "auth_backend": "local",
     "auth_local_users": [
-      {"username": "portal", "token": "CHANGEME", "roles": ["platform_admin"]}
-    ],
-    "cribl_service_url": "http://cribl-service:8001",
-    "ece_service_url": "http://ece-service:8002",
-    "etn_onboarding_url": "http://etn-onboarding:5000",
-    "token": "CHANGEME",
-    "etn_portal_url": "",
-    "etn_portal_api_key": ""
-  },
-
-  "_workspace_options_reference": {
-    "_comment": "Optional fields you can add to any workspace entry:",
-    "routes_table": "route table name used in GET/PATCH /routes/{routes_table} — defaults to \"default\" if omitted",
-    "skip_ssl": "true/false — overrides global skip_ssl for this workspace only",
-    "require_allow": "true — forces the user to type ALLOW before any writes",
-    "route_template": "path to a per-workspace route template override (skips region lookup)",
-    "dest_template": "path to a per-workspace dest template override (skips region lookup)",
-    "description": "human-readable label shown in the TARGET banner"
+      {"username": "portal", "token": "CHANGE_ME", "roles": ["platform_admin"]}
+    ]
   }
 }

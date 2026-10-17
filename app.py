@@ -45,6 +45,7 @@ from cribl_config import (
     get_workspace, build_workspace_urls,
 )
 from cribl_utils import read_json, read_apps_from_file
+from config_resolver import resolve_config
 from models import db, OnboardingRequest
 from opentelemetry import trace
 from otel_setup import configure_otel, make_json_formatter, use_json_logging
@@ -61,7 +62,7 @@ def _early_cfg() -> dict:
     """Read config.json once at import time for module-level defaults."""
     try:
         if CONFIG_PATH.exists():
-            return json.loads(CONFIG_PATH.read_text())
+            return resolve_config(json.loads(CONFIG_PATH.read_text()))
     except Exception:
         pass
     return {}
@@ -152,6 +153,20 @@ app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB
 
 log = setup_app_logging(app)
 
+# ── Startup diagnostics ──────────────────────────────────────────────────────
+log.info("=" * 60)
+log.info("cribl-framework startup config:")
+log.info("  CRIBL_SERVICE_URL:   %s", CRIBL_SERVICE_URL or "(EMPTY — direct Cribl mode)")
+log.info("  ECE_SERVICE_URL:     %s", ECE_SERVICE_URL or "(EMPTY)")
+log.info("  ETN_ONBOARDING_URL:  %s", ETN_ONBOARDING_URL or "(EMPTY)")
+log.info("  ETN_ONBOARDING_TOKEN: %s", "set" if ETN_ONBOARDING_TOKEN else "(empty)")
+log.info("  config.json base_url: %s", _boot_cfg.get("base_url", "(EMPTY)"))
+log.info("  config.json credentials.username: %s", _boot_cfg.get("credentials", {}).get("username", "(EMPTY)"))
+log.info("  config.json credentials.token: %s", "set" if _boot_cfg.get("credentials", {}).get("token") else "(empty)")
+log.info("  config.json database.url: %s", "set" if _boot_cfg.get("database", {}).get("url") else "(EMPTY)")
+log.info("  config.json datastream.elk_url: %s", _boot_cfg.get("datastream", {}).get("elk_url", "(EMPTY)"))
+log.info("=" * 60)
+
 try:
     from opentelemetry.instrumentation.flask import FlaskInstrumentor
     FlaskInstrumentor().instrument_app(app)
@@ -225,7 +240,7 @@ def load_config() -> dict:
         )
         return {}
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        return resolve_config(json.load(f))
 
 
 # ── Session configuration ─────────────────────────────────────────────────────
@@ -389,7 +404,7 @@ def es_index(doc: dict, config: dict) -> str:
     """Write a document to the configured ES datastream. Returns the ES _id."""
     ds       = config.get("datastream", {})
     base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
-    index    = ds.get("index", "logs-cribl-onboarding-requests")
+    index    = ds.get("index", "cribl-onboarding-requests")
     skip_ssl = ds.get("skip_ssl", config.get("skip_ssl", False))
     timeout  = ds.get("timeout", 30)
 
@@ -428,6 +443,17 @@ def es_index(doc: dict, config: dict) -> str:
     return resp.json().get("_id", "unknown")
 
 
+def _find_onboarding_row(identifier: str):
+    """Find an OnboardingRequest by apm_id or id (UUID)."""
+    row = OnboardingRequest.query.filter_by(apm_id=identifier).first()
+    if row:
+        return row
+    try:
+        return db.session.get(OnboardingRequest, identifier)
+    except Exception:
+        return None
+
+
 def portal_update_status_internal(request_id: str, status: str, config: dict) -> dict:
     """
     Update the status of a portal request in PostgreSQL, Elasticsearch,
@@ -439,13 +465,10 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
     # ── Update PostgreSQL ─────────────────────────────────────────────────
     if _db_url:
         try:
-            row = (
-                OnboardingRequest.query.filter_by(request_id=request_id).first()
-                or OnboardingRequest.query.filter_by(apmid=request_id).first()
-            )
+            row = _find_onboarding_row(request_id)
             if row:
                 row.status = status
-                apmid = row.apmid
+                apmid = row.apm_id
                 db.session.commit()
                 log.info("PSQL status update OK — request_id=%s  apmid=%s  status=%s", request_id, apmid, status)
             else:
@@ -455,7 +478,7 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
             log.error("PSQL status update failed — %s: %s", type(exc).__name__, exc)
 
     # ── Advance etn_onboarding state machine ─────────────────────────────
-    if ETN_ONBOARDING_URL and apmid and status == "done":
+    if ETN_ONBOARDING_URL and apmid and status == "delivery_complete":
         try:
             headers = {"Content-Type": "application/json"}
             if ETN_ONBOARDING_TOKEN:
@@ -482,7 +505,7 @@ def portal_update_status_internal(request_id: str, status: str, config: dict) ->
             log.warning("etn_onboarding transition error — apmid=%s: %s", apmid, exc)
     ds       = config.get("datastream", {})
     base_url = (os.environ.get("ES_DATASTREAM_URL") or ds.get("elk_url", "")).strip().rstrip("/")
-    index    = ds.get("index", "logs-cribl-onboarding-requests")
+    index    = ds.get("index", "cribl-onboarding-requests")
     skip_ssl = ds.get("skip_ssl", config.get("skip_ssl", False))
     timeout  = ds.get("timeout", 30)
 
@@ -1218,20 +1241,21 @@ def portal_submit():
         legacy_req_id = f"REQ-{now.strftime('%Y%m%d')}-{etn_request_id[:8].upper()}"
         if _db_url:
             try:
-                existing = OnboardingRequest.query.filter_by(apmid=app_id).first()
+                existing = _find_onboarding_row(app_id)
                 if existing:
-                    log.info("PSQL skip — apmid=%s already exists (request_id=%s)", app_id, existing.request_id)
+                    log.info("PSQL skip — apm_id=%s already exists (id=%s)", app_id, existing.id)
                 else:
+                    import uuid
                     row = OnboardingRequest(
-                        request_id=legacy_req_id,
-                        timestamp=now,
+                        id=uuid.UUID(etn_request_id) if etn_request_id else uuid.uuid4(),
                         lan_id=lan_id,
                         first_name=first_name,
                         last_name=last_name,
-                        requester_name=req_name,
-                        apmid=app_id,
-                        appname=app_name,
-                        app_team=app_team,
+                        requestor_name=req_name,
+                        requestor_email=app_emails[0] if app_emails else "",
+                        apm_id=app_id,
+                        app_name=app_name,
+                        team=app_team or "",
                         ays_group=ays_group,
                         app_emails=app_emails,
                         region=region,
@@ -1243,7 +1267,7 @@ def portal_submit():
                         dest=dest,
                         ilm_tier=ilm_tier,
                         elk_capacity=elk_capacity if elk_capacity else None,
-                        status="pending",
+                        status="intake_pending",
                     )
                     db.session.add(row)
                     db.session.commit()
@@ -1291,16 +1315,17 @@ def portal_submit():
     # ── Persist to PostgreSQL ────────────────────────────────────────────────
     if _db_url:
         try:
+            import uuid as _uuid
             row = OnboardingRequest(
-                request_id=request_id,
-                timestamp=now,
+                id=_uuid.uuid4(),
                 lan_id=lan_id,
                 first_name=first_name,
                 last_name=last_name,
-                requester_name=req_name,
-                apmid=app_id,
-                appname=app_name,
-                app_team=app_team,
+                requestor_name=req_name,
+                requestor_email=app_emails[0] if app_emails else "",
+                apm_id=app_id,
+                app_name=app_name,
+                team=app_team or "",
                 ays_group=ays_group,
                 app_emails=app_emails,
                 region=region,
@@ -1316,7 +1341,7 @@ def portal_submit():
                 logstash_pipeline=None,
                 roles=0,
                 routes=0,
-                status="pending",
+                status="intake_pending",
             )
             db.session.add(row)
             db.session.commit()
@@ -1329,7 +1354,7 @@ def portal_submit():
     # ── Persist to Elasticsearch ──────────────────────────────────────────────
     try:
         log.info("indexing to ES — index=%s  request_id=%s",
-                 config.get("datastream", {}).get("index", "logs-cribl-onboarding-requests"),
+                 config.get("datastream", {}).get("index", "cribl-onboarding-requests"),
                  request_id)
         es_id = es_index(doc, config)
         log.info("ES index OK — request_id=%s  es_id=%s", request_id, es_id)
@@ -1762,7 +1787,7 @@ def run_pusher():
         if last_rc == 0 and not dry_run:
             _update_id = request_id or (apps[0][0] if apps else "")
             if _update_id:
-                portal_result = portal_update_status_internal(_update_id, "done", config)
+                portal_result = portal_update_status_internal(_update_id, "delivery_complete", config)
 
         return jsonify({
             "output":        all_output.strip(),
@@ -1810,7 +1835,7 @@ def run_pusher():
     if last_rc == 0 and not dry_run:
         _update_id = request_id or (apps[0][0] if apps else "")
         if _update_id:
-            portal_result = portal_update_status_internal(_update_id, "done", config)
+            portal_result = portal_update_status_internal(_update_id, "delivery_complete", config)
 
     return jsonify({
         "output":        all_output.strip(),
@@ -1939,6 +1964,9 @@ def list_destinations(worker_group: str):
     except Exception as exc:
         log.error("list-destinations failed: %s", exc)
         return jsonify({"error": str(exc)}), 500
+    # Normalize response: ensure {items: [...]} format for the UI
+    if isinstance(body, list):
+        body = {"items": body}
     return jsonify(body), status
 
 
@@ -2224,7 +2252,7 @@ def run_role_rm():
         if last_rc == 0 and not dry_run:
             _update_id = request_id or form.get("apmid", "").strip()
             if _update_id:
-                portal_result = portal_update_status_internal(_update_id, "done", config)
+                portal_result = portal_update_status_internal(_update_id, "delivery_complete", config)
 
         return jsonify({
             "output":        all_output.strip(),
@@ -2264,7 +2292,7 @@ def run_role_rm():
     if rc == 0 and not dry_run:
         _update_id = request_id or form.get("apmid", "").strip()
         if _update_id:
-            portal_result = portal_update_status_internal(_update_id, "done", config)
+            portal_result = portal_update_status_internal(_update_id, "delivery_complete", config)
 
     return jsonify({
         "output":        output,
@@ -2396,20 +2424,20 @@ def _build_catalog(config: dict) -> list:
     seen: dict = {}
     if _db_url:
         try:
-            rows = OnboardingRequest.query.order_by(OnboardingRequest.id.desc()).all()
+            rows = OnboardingRequest.query.order_by(OnboardingRequest.created_at.desc()).all()
             for row in rows:
-                if row.apmid and row.apmid not in seen:
-                    seen[row.apmid] = {
-                        "apmid":              row.apmid,
-                        "appname":            row.appname,
-                        "request_id":         row.request_id,
-                        "region":             row.region,
+                if row.apm_id and row.apm_id not in seen:
+                    seen[row.apm_id] = {
+                        "apmid":              row.apm_id,
+                        "appname":            row.app_name,
+                        "request_id":         str(row.id),
+                        "region":             row.region or "",
                         "status":             row.status,
-                        "lan_id":             row.lan_id,
-                        "@timestamp":         row.timestamp.isoformat() if row.timestamp else "",
-                        "requester_name":     row.requester_name,
+                        "lan_id":             row.lan_id or "",
+                        "@timestamp":         row.created_at.isoformat() if row.created_at else "",
+                        "requester_name":     row.requestor_name or "",
                         "entitlement_groups": row.entitlement_groups or [],
-                        "data_type":          row.data_type,
+                        "data_type":          row.data_type or "",
                         "log_types":          row.log_types or [],
                         "log_destinations":   row.log_destinations or [],
                     }
@@ -2696,11 +2724,10 @@ def api_onboarding_requests():
     # 1. Local PostgreSQL first (portal's own table — reflects pusher/admin updates)
     if _db_url:
         try:
-            rows = OnboardingRequest.query.order_by(OnboardingRequest.id.desc()).all()
+            rows = OnboardingRequest.query.order_by(OnboardingRequest.created_at.desc()).all()
             for r in rows:
-                seen_apms.add(r.apmid)
-                d = r.to_dict()
-                results.append(d)
+                seen_apms.add(r.apm_id)
+                results.append(r.to_dict())
         except Exception as exc:
             log.warning("local DB requests fetch failed: %s", exc)
 
@@ -2982,7 +3009,7 @@ def api_catalog_delete(apm_id):
     # ── 3. Mark as offboarded in PostgreSQL ──────────────────────────────────
     if not dry_run and _db_url:
         try:
-            row = OnboardingRequest.query.filter_by(apmid=apm_id).first()
+            row = _find_onboarding_row(apm_id)
             if row:
                 row.status = "offboarded"
                 db.session.commit()
@@ -3176,9 +3203,10 @@ def cribl_run():
         # Update status in PSQL
         if _db_url:
             try:
-                row = OnboardingRequest.query.filter_by(apmid=apmid).first()
+                from sqlalchemy import text
+                row = _find_onboarding_row(apmid)
                 if row:
-                    row.status = "done"
+                    row.status = "delivery_complete"
                     db.session.commit()
                     log.info("cribl/run — PSQL status set to done for apmid=%s", apmid)
             except Exception as exc:
@@ -3195,7 +3223,7 @@ def cribl_run():
                     f"{es_base}/{es_idx}/_update_by_query",
                     json={
                         "query": {"term": {"apmid.keyword": apmid}},
-                        "script": {"source": "ctx._source.status = 'done'", "lang": "painless"},
+                        "script": {"source": "ctx._source.status = 'delivery_complete'", "lang": "painless"},
                     },
                     headers=es_hdrs,
                     timeout=30,

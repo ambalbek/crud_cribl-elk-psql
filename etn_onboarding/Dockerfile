@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Application code ────────────────────────────────────────────────────────
 COPY ./etn_onboarding/ ./etn_onboarding
+COPY config_resolver.py ./config_resolver.py
 
 RUN chmod +x ./etn_onboarding/entrypoint.sh
 

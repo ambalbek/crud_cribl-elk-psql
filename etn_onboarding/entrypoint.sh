@@ -1,9 +1,20 @@
 #!/bin/sh
 set -e
 
+cd /app/etn_onboarding
+
 # If DATABASE_URL env var is not set, try to read it from config.json
 if [ -z "$DATABASE_URL" ] && [ -f /app/config.json ]; then
-  DATABASE_URL=$(python -c "import json; print(json.load(open('/app/config.json')).get('etn_onboarding',{}).get('database_url',''))" 2>/dev/null || true)
+  DATABASE_URL=$(python -c "
+import json,sys
+sys.path.insert(0,'/app')
+try:
+    from config_resolver import resolve_config
+    c = resolve_config(json.load(open('/app/config.json')))
+except Exception:
+    c = json.load(open('/app/config.json'))
+print(c.get('etn_onboarding',{}).get('database_url','') or c.get('globals',{}).get('database_url',''))
+" 2>/dev/null || true)
   export DATABASE_URL
 fi
 
