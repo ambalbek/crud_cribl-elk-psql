@@ -657,34 +657,6 @@
   </div>
 </div>
 
-<!-- ══════════ CREDENTIALS MODAL ══════════ -->
-<div class="modal-overlay" id="credsModal">
-  <div class="modal" style="width:420px;">
-    <h3>&#128274; Cribl Credentials</h3>
-    <p>Enter credentials to authenticate with Cribl Stream.</p>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">
-      <label style="font-size:.88rem;">
-        Bearer Token <span style="color:var(--muted);font-weight:400">(leave blank to use username/password)</span>
-        <input type="password" id="creds_token" style="width:100%;margin-top:4px;">
-      </label>
-      <p style="color:var(--muted);font-size:.84rem;margin:0;text-align:center;">— or —</p>
-      <div style="display:flex;gap:10px;">
-        <label style="font-size:.88rem;flex:1;">
-          Username
-          <input type="text" id="creds_username" style="width:100%;margin-top:4px;">
-        </label>
-        <label style="font-size:.88rem;flex:1;">
-          Password
-          <input type="password" id="creds_password" style="width:100%;margin-top:4px;">
-        </label>
-      </div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeCredsModal()">Cancel</button>
-      <button class="btn btn-primary" id="credsSubmitBtn" onclick="submitWithCreds()">Run</button>
-    </div>
-  </div>
-</div>
 
 <!-- ══════════ RE-ONBOARD / OFFBOARD RESULT MODAL ══════════ -->
 <div class="modal-overlay" id="resultModal">
@@ -1049,57 +1021,17 @@
     document.getElementById('offboardModal').classList.remove('open');
   }
 
-  /* ── Re-onboard ── */
-  let _pendingReonboard = null;
-
+  /* ── Re-onboard — redirect to Cribl Pusher with pre-filled fields ── */
   function reonboard(apm, name, region, workerGroup) {
-    _pendingReonboard = { apm, name, region, workerGroup };
-    document.getElementById('creds_token').value = '';
-    document.getElementById('creds_username').value = '';
-    document.getElementById('creds_password').value = '';
-    document.getElementById('credsModal').classList.add('open');
-  }
-
-  function closeCredsModal() {
-    document.getElementById('credsModal').classList.remove('open');
-    _pendingReonboard = null;
-  }
-
-  async function submitWithCreds() {
-    if (!_pendingReonboard) return;
-    const { apm, name, region, workerGroup } = _pendingReonboard;
-    const token    = document.getElementById('creds_token').value.trim();
-    const username = document.getElementById('creds_username').value.trim();
-    const password = document.getElementById('creds_password').value.trim();
-
-    if (!token && (!username || !password)) {
-      alert('Provide a token or username + password.');
-      return;
-    }
-
-    closeCredsModal();
-
-    const payload = {
-      apmid: apm, appname: name, region: region, worker_group: workerGroup,
-      token: token, username: username, password: password,
-    };
-    showResult('Re-onboard: ' + name, 'Sending request to Cribl...', -1);
-
-    try {
-      const resp = await fetch('/cribl/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await resp.json();
-      if (data.errors) {
-        updateResult('Re-onboard: ' + name, data.errors.join('\n'), 1);
-      } else {
-        updateResult('Re-onboard: ' + name, data.output || '(no output)', data.returncode || 0);
-      }
-    } catch (err) {
-      updateResult('Re-onboard Error', err.message, 1);
-    }
+    const row = allData.find(r => r.apm === apm);
+    const params = new URLSearchParams({
+      apmid:     apm,
+      appname:   name,
+      region:    region || '',
+      workspace: (row && row.workspace) || '',
+      req_id:    (row && row.req_id) || '',
+    });
+    window.location.href = '/cribl/app?' + params.toString();
   }
 
   /* ── Result modal ── */

@@ -1572,6 +1572,55 @@ function filterTable() {
 onWorkspaceChange('t1');
 onWorkspaceChange('t2');
 onWorkspaceChange('t3');
+
+// ── Prefill from query params (e.g. redirected from catalog) ─────────────
+(function prefillFromQuery() {
+  const p = new URLSearchParams(window.location.search);
+  if (!p.has('apmid') && !p.has('appname')) return;
+
+  // Ensure Tab 1 (Cribl Pusher) is active
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const tab1Btn = document.querySelector('.tab-btn[data-tab="tab1"]') || document.querySelectorAll('.tab-btn')[0];
+  const tab1Content = document.getElementById('tab1') || document.querySelectorAll('.tab-content')[0];
+  if (tab1Btn) tab1Btn.classList.add('active');
+  if (tab1Content) tab1Content.classList.add('active');
+
+  // Set APMID and Appname
+  const appidEl   = document.getElementById('t1_appid');
+  const appnameEl = document.getElementById('t1_appname');
+  if (appidEl   && p.get('apmid'))   appidEl.value   = p.get('apmid');
+  if (appnameEl && p.get('appname')) appnameEl.value = p.get('appname');
+
+  // Set region radio
+  const region = p.get('region');
+  if (region) {
+    const radio = document.querySelector('input[name="t1_region"][value="' + region + '"]');
+    if (radio) radio.checked = true;
+  }
+
+  // Set workspace and trigger worker group refresh
+  const workspace = p.get('workspace');
+  if (workspace) {
+    const wsSel = document.getElementById('t1_workspace');
+    if (wsSel) {
+      for (const opt of wsSel.options) {
+        if (opt.value === workspace) { wsSel.value = workspace; break; }
+      }
+      onWorkspaceChange('t1');
+    }
+  }
+
+  // Set request ID
+  const reqId = p.get('req_id');
+  if (reqId) {
+    const reqEl = document.getElementById('t1_request_id');
+    if (reqEl) reqEl.value = reqId;
+  }
+
+  // Clean URL without reloading
+  window.history.replaceState({}, '', window.location.pathname);
+})();
 </script>
 
 </div><!-- /cf-main -->

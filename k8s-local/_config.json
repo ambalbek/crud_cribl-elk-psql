@@ -66,6 +66,17 @@
     "entitlementFilter": "entitlements"
   },
 
+  "iiq_url": "https://iiq.company.com/MOYAACESS",
+  "dynatrace_url": "https://dynatrace.company.com/questionnaire",
+
+  "ldap": {
+    "server": "ldaps://ldap.corp.example.com:636",
+    "bind_dn": "CN=svc-cribl,OU=ServiceAccounts,DC=corp,DC=example,DC=com",
+    "bind_pw": "CHANGE_ME",
+    "base_dn": "DC=corp,DC=example,DC=com",
+    "use_ssl": true
+  },
+
   "etn_onboarding": {
     "auth_backend": "local"
   }
