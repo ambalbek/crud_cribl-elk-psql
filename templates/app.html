@@ -157,12 +157,20 @@
       <div class="panel">
         <p class="panel-title">Workspace</p>
 
-        {% set cribl_urls = config.get('cribl_urls', []) %}
+        {% set cribl_nodes = {} %}
+        {% if config.get('base_url') %}
+          {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
+        {% endif %}
+        {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
+          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
+            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
         <div class="form-group">
           <label for="t1_cribl_url">Cribl URL <span style="font-weight:400">(optional — overrides config.json)</span></label>
-          {% if cribl_urls %}
+          {% if cribl_nodes %}
             <select id="t1_cribl_url">
-              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in cribl_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t1_cribl_url" placeholder="leave blank to use config.json">
@@ -429,12 +437,24 @@
       <div class="panel">
         <p class="panel-title">ELK Connection — Nonprod</p>
 
-        {% set elk_urls_nonprod = config.get('elk_urls_nonprod', config.get('elk_urls', [])) %}
+        {% set elk_nodes = {} %}
+        {% for cl in config.get('entitlement', {}).get('clusters', []) %}
+          {% if cl.get('url') and cl.get('url') not in elk_nodes %}
+            {% if elk_nodes.update({cl.get('url'): cl.get('name', 'cluster')}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
+        {% set ece = config.get('ece', {}) %}
+        {% if ece.get('es_url') and ece.get('es_url') not in elk_nodes %}
+          {% if elk_nodes.update({ece.get('es_url'): 'nonprod'}) %}{% endif %}
+        {% endif %}
+        {% if ece.get('es_url_prod') and ece.get('es_url_prod') not in elk_nodes %}
+          {% if elk_nodes.update({ece.get('es_url_prod'): 'prod'}) %}{% endif %}
+        {% endif %}
         <div class="form-group">
           <label for="t2_elk_url_nonprod">ELK Nonprod URL</label>
-          {% if elk_urls_nonprod %}
+          {% if elk_nodes %}
             <select id="t2_elk_url_nonprod">
-              {% for u in elk_urls_nonprod %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in elk_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t2_elk_url_nonprod" placeholder="https://elk-nonprod.example.com">
@@ -461,12 +481,11 @@
       <div class="panel">
         <p class="panel-title">ELK Connection — Prod</p>
 
-        {% set elk_urls_prod = config.get('elk_urls_prod', config.get('elk_urls', [])) %}
         <div class="form-group">
           <label for="t2_elk_url_prod">ELK Prod URL</label>
-          {% if elk_urls_prod %}
+          {% if elk_nodes %}
             <select id="t2_elk_url_prod">
-              {% for u in elk_urls_prod %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in elk_nodes.items() %}<option value="{{ url }}"{% if 'prod' in label.lower() %} selected{% endif %}>{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t2_elk_url_prod" placeholder="https://elk-prod.example.com">
@@ -512,12 +531,20 @@
       <div class="panel">
         <p class="panel-title">Cribl Workspace</p>
 
-        {% set cribl_urls = config.get('cribl_urls', []) %}
+        {% set cribl_nodes = {} %}
+        {% if config.get('base_url') %}
+          {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
+        {% endif %}
+        {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
+          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
+            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
         <div class="form-group">
           <label for="t2_cribl_url">Cribl URL <span style="font-weight:400">(optional)</span></label>
-          {% if cribl_urls %}
+          {% if cribl_nodes %}
             <select id="t2_cribl_url">
-              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in cribl_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t2_cribl_url" placeholder="https://cribl.example.com:9000">
@@ -656,13 +683,21 @@
       <div class="panel">
         <p class="panel-title">Workspace</p>
 
-        {% set cribl_urls = config.get('cribl_urls', []) %}
+        {% set cribl_nodes = {} %}
+        {% if config.get('base_url') %}
+          {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
+        {% endif %}
+        {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
+          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
+            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
         <div class="form-group">
           <label for="t3_cribl_url">Cribl URL <span style="font-weight:400">(leave default to route via cribl_service)</span></label>
-          {% if cribl_urls %}
+          {% if cribl_nodes %}
             <select id="t3_cribl_url">
               <option value="">— via cribl_service (default) —</option>
-              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }} (direct)</option>{% endfor %}
+              {% for url, label in cribl_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t3_cribl_url" placeholder="leave blank to route via cribl_service">

@@ -46,21 +46,31 @@
   "diff_lines": 3,
 
   "workspaces": {
-    "dev": {
+    "_comment": "Each workspace can override base_url to target a different Cribl leader (e.g. azn vs azs).",
+    "dev_azn": {
+      "base_url": "https://cribl.azn.com:9000",
       "worker_groups": ["default"],
-      "dest_templates": {
-        "azn": "blob_dest_template_azn_dev.json",
-        "azs": "blob_dest_template_azs_dev.json"
-      },
-      "description": "Development workspace"
+      "dest_templates": {"azn": "blob_dest_template_azn_dev.json"},
+      "description": "Dev - Azure North"
     },
-    "prod": {
+    "dev_azs": {
+      "base_url": "https://cribl.azs.com:9000",
+      "worker_groups": ["default"],
+      "dest_templates": {"azs": "blob_dest_template_azs_dev.json"},
+      "description": "Dev - Azure South"
+    },
+    "prod_azn": {
+      "base_url": "https://cribl.azn.com:9000",
       "worker_groups": ["wg-prod-01"],
-      "dest_templates": {
-        "azn": "blob_dest_template_azn_prod.json",
-        "azs": "blob_dest_template_azs_prod.json"
-      },
-      "description": "Production workspace",
+      "dest_templates": {"azn": "blob_dest_template_azn_prod.json"},
+      "description": "Prod - Azure North",
+      "require_allow": true
+    },
+    "prod_azs": {
+      "base_url": "https://cribl.azs.com:9000",
+      "worker_groups": ["wg-prod-01"],
+      "dest_templates": {"azs": "blob_dest_template_azs_prod.json"},
+      "description": "Prod - Azure South",
       "require_allow": true
     }
   },

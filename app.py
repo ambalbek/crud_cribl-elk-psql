@@ -2598,20 +2598,23 @@ def _build_catalog(config: dict) -> list:
         timestamp    = (doc.get("@timestamp")       or "").strip()
         entitlements = doc.get("entitlement_groups") or []
 
-        # Resolve worker group from region
+        # Resolve worker group and workspace from region
         matched_wg = ""
+        matched_ws = ""
         for ws_name, ws_cfg in workspaces.items():
             ws_regions = ws_cfg.get("regions", [ws_cfg.get("region", "")])
             if region in ws_regions:
                 wgs = ws_cfg.get("worker_groups", [])
                 if wgs:
                     matched_wg = wgs[0]
+                    matched_ws = ws_name
                     break
         if not matched_wg:
-            for ws_cfg in workspaces.values():
+            for ws_name, ws_cfg in workspaces.items():
                 wgs = ws_cfg.get("worker_groups", [])
                 if wgs:
                     matched_wg = wgs[0]
+                    matched_ws = ws_name
                     break
 
         # Aggregate Cribl route counts
@@ -2647,6 +2650,7 @@ def _build_catalog(config: dict) -> list:
             "name":             appname,
             "req_id":           request_id,
             "region":           region,
+            "workspace":        matched_ws,
             "worker_group":     matched_wg,
             "routes":           total_routes,
             "dest":             dest,
@@ -2668,7 +2672,19 @@ def _build_catalog(config: dict) -> list:
 @app.route("/cribl/catalog/")
 @login_required
 def catalog_page():
-    return render_template("catalog.html")
+    try:
+        config = load_config()
+    except Exception:
+        config = {}
+    workspaces = {
+        k: v for k, v in config.get("workspaces", {}).items()
+        if not k.startswith("_")
+    }
+    ws_options = [
+        {"id": k, "label": v.get("description", k)}
+        for k, v in workspaces.items()
+    ]
+    return render_template("catalog.html", workspaces=ws_options)
 
 
 @app.route("/cribl/api/catalog/refresh", methods=["POST"])
@@ -3145,18 +3161,22 @@ def cribl_run():
         except Exception as exc:
             return jsonify({"errors": [f"Config error: {exc}"]}), 500
 
-        # Forward only explicit user-provided credentials from the request body.
-        # If none provided, cribl_service uses its own CRIBL_TOKEN env var.
+        # Forward workspace-specific Cribl URL and credentials to cribl_service.
+        # This allows different workspaces to target different Cribl leaders
+        # (e.g. cribl.azn.com vs cribl.azs.com).
         run_cred_headers: dict[str, str] = {}
-        run_token = (data.get("token") or "").strip()
-        run_user  = (data.get("username") or "").strip()
-        run_pass  = (data.get("password") or "").strip()
-        if run_token:
-            run_cred_headers["X-Cribl-Token"] = run_token
-        if run_user:
-            run_cred_headers["X-Cribl-Username"] = run_user
-        if run_pass:
-            run_cred_headers["X-Cribl-Password"] = run_pass
+        ws_base_url = ws_cfg.get("base_url", config.get("base_url", ""))
+        if ws_base_url:
+            run_cred_headers["X-Cribl-Url"] = ws_base_url
+        ws_token = (data.get("token") or ws_cfg.get("token", "") or "").strip()
+        ws_user  = (data.get("username") or ws_cfg.get("username", "") or "").strip()
+        ws_pass  = (data.get("password") or ws_cfg.get("password", "") or "").strip()
+        if ws_token:
+            run_cred_headers["X-Cribl-Token"] = ws_token
+        if ws_user:
+            run_cred_headers["X-Cribl-Username"] = ws_user
+        if ws_pass:
+            run_cred_headers["X-Cribl-Password"] = ws_pass
 
         for wg in worker_groups:
             payload = {
