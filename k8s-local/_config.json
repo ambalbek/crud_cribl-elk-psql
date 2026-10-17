@@ -1,0 +1,72 @@
+{
+  "globals": {
+    "log_level": "INFO",
+    "log_format": "text",
+    "skip_ssl": true,
+    "secret_key": "local-dev-secret-key-change-in-prod",
+    "database_url": "postgresql://cribl:cribl@postgres:5432/etn_onboarding",
+    "elasticsearch_url": "http://elasticsearch:9200",
+    "elasticsearch_token": "",
+    "elasticsearch_username": "elastic",
+    "elasticsearch_password": "changeme",
+    "cribl_url": "http://cribl-stream:9000",
+    "cribl_token": "",
+    "cribl_username": "admin",
+    "cribl_password": "admin",
+    "cribl_service_url": "http://cribl-service:8001",
+    "ece_service_url": "http://ece-service:8002",
+    "etn_onboarding_url": "http://etn-onboarding:5000",
+    "inter_service_token": "local-token"
+  },
+
+  "auth": {
+    "session_lifetime_minutes": 480,
+    "local_admins": [
+      {
+        "username": "admin",
+        "password": "admin",
+        "display_name": "Local Admin"
+      }
+    ],
+    "local_users": []
+  },
+
+  "route_templates": {
+    "azn": "route_template_azn.json",
+    "azs": "route_template_azs.json"
+  },
+  "dest_prefixes": {
+    "azn": "hcsc-blob-storage-northcentralus",
+    "azs": "hcsc-blob-storage-southcentralus"
+  },
+  "snapshot_dir": "cribl_snapshots",
+  "min_existing_total_routes": 1,
+  "diff_lines": 3,
+
+  "workspaces": {
+    "dev": {
+      "worker_groups": ["default"],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_dev.json",
+        "azs": "blob_dest_template_azs_dev.json"
+      },
+      "description": "Development workspace"
+    }
+  },
+
+  "datastream": {
+    "index": "cribl-onboarding-requests",
+    "timeout": 30
+  },
+
+  "entitlement": {
+    "clusters": [
+      { "name": "local" }
+    ],
+    "entitlementFilter": "entitlements"
+  },
+
+  "etn_onboarding": {
+    "auth_backend": "local"
+  }
+}
