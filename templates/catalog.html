@@ -493,27 +493,13 @@
   </style>
 </head>
 <body>
+<div class="cf-app">
+{% set nav_active = 'catalog' %}
+{% include 'partials/sidebar.html' %}
+<div class="cf-main">
+
 
 <!-- ══════════ HEADER ══════════ -->
-<header>
-  <div class="logo-icon">&#128225;</div>
-  <span class="logo-text"><a href="/cribl/">Cribl Framework</a></span>
-  <span class="badge">Service Catalog</span>
-  <div class="nav-links">
-    <a href="{{ url_for('portal_index') }}">Portal</a>
-    <a href="{{ url_for('entitlements_page') }}">Entitlements</a>
-    <a href="{{ url_for('catalog_page') }}" class="active">Catalog</a>
-    {% if current_role == 'admin' %}
-    <a href="{{ url_for('cribl_app_page') }}">Pusher</a>
-    <a href="{{ url_for('portal_admin_update_status') }}">Admin</a>
-    {% endif %}
-    {% if current_user %}
-    <span style="color:var(--muted);font-size:.84rem;">{{ current_display_name }}</span>
-    <a href="{{ url_for('logout') }}" style="border-color:var(--accent);color:var(--accent);">Logout</a>
-    {% endif %}
-  </div>
-</header>
-
 <!-- ══════════ MAIN ══════════ -->
 <main>
   <div id="alertError" class="alert-error" role="alert"></div>
@@ -539,6 +525,12 @@
       <option value="frozen">Frozen</option>
       <option value="tiered">Tiered</option>
       <option value="none">None</option>
+    </select>
+    <select id="clusterFilter">
+      <option value="">All Clusters</option>
+      {% for ws in workspaces %}
+      <option value="{{ ws.id }}">{{ ws.label }}</option>
+      {% endfor %}
     </select>
     <button class="btn btn-primary" id="refreshBtn" onclick="fetchCatalog()">Refresh</button>
     <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
@@ -601,6 +593,7 @@
           <th data-col="name"   onclick="sortBy('name')">App Name <span class="sort-arrow">&#9650;</span></th>
           <th data-col="req_id" onclick="sortBy('req_id')">REQ ID <span class="sort-arrow">&#9650;</span></th>
           <th data-col="region" onclick="sortBy('region')">Region <span class="sort-arrow">&#9650;</span></th>
+          <th data-col="workspace" onclick="sortBy('workspace')">Cluster <span class="sort-arrow">&#9650;</span></th>
           <th data-col="routes" onclick="sortBy('routes')">Routes <span class="sort-arrow">&#9650;</span></th>
           <th data-col="ilm_tier" onclick="sortBy('ilm_tier')">ILM Tier <span class="sort-arrow">&#9650;</span></th>
           <th data-col="roles"  onclick="sortBy('roles')">Roles <span class="sort-arrow">&#9650;</span></th>
@@ -618,11 +611,12 @@
           <th></th>
           <th></th>
           <th></th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="tableBody">
         <tr>
-          <td colspan="10">
+          <td colspan="11">
             <div class="loading">
               <div class="spinner"></div>
               <div>Loading service catalog...</div>
@@ -663,6 +657,7 @@
   </div>
 </div>
 
+
 <!-- ══════════ RE-ONBOARD / OFFBOARD RESULT MODAL ══════════ -->
 <div class="modal-overlay" id="resultModal">
   <div class="modal" style="width:600px;">
@@ -699,15 +694,15 @@
     btn.disabled = true;
     btn.textContent = 'Loading...';
     document.getElementById('paginationBar').style.display = 'none';
-    tbody.innerHTML = '<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>Fetching live data from Cribl &amp; Elasticsearch...</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11"><div class="loading"><div class="spinner"></div><div>Fetching live data from Cribl &amp; Elasticsearch...</div></div></td></tr>';
 
     try {
-      const resp = await fetch('/cribl/api/catalog');
+      const resp = await fetch('/cribl/api/catalog?refresh=true');
       const data = await resp.json();
       if (data.errors) {
         alert.textContent = data.errors.join(' ');
         alert.classList.add('visible');
-        tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><h3>Error</h3><p>' + esc(data.errors.join(' ')) + '</p></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><h3>Error</h3><p>' + esc(data.errors.join(' ')) + '</p></div></td></tr>';
         return;
       }
       allData = data;
@@ -715,7 +710,7 @@
       currentPage = 1;
       applyFilters();
     } catch (err) {
-      tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><h3>Connection Error</h3><p>' + esc(err.message) + '</p></div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><h3>Connection Error</h3><p>' + esc(err.message) + '</p></div></td></tr>';
     } finally {
       btn.disabled = false;
       btn.textContent = 'Refresh';
@@ -739,20 +734,22 @@
     const region    = document.getElementById('regionFilter').value;
     const status    = document.getElementById('statusFilter').value;
     const ilm       = document.getElementById('ilmFilter').value;
+    const cluster   = document.getElementById('clusterFilter').value;
     const fApm      = document.getElementById('fApm').value.toLowerCase();
     const fName     = document.getElementById('fName').value.toLowerCase();
     const fReqId    = document.getElementById('fReqId').value.toLowerCase();
 
     filteredData = allData.filter(row => {
-      if (region && row.region !== region) return false;
-      if (status && row.status !== status) return false;
-      if (ilm    && row.ilm_tier !== ilm)  return false;
+      if (region  && row.region !== region)       return false;
+      if (status  && row.status !== status)       return false;
+      if (ilm     && row.ilm_tier !== ilm)        return false;
+      if (cluster && row.workspace !== cluster)   return false;
       if (fApm   && !(row.apm  || '').toLowerCase().includes(fApm))    return false;
       if (fName  && !(row.name || '').toLowerCase().includes(fName))   return false;
       if (fReqId && !(row.req_id || '').toLowerCase().includes(fReqId)) return false;
       if (search) {
-        const hay = [row.apm, row.name, row.req_id, row.region, row.dest,
-                     row.worker_group, row.status].join(' ').toLowerCase();
+        const hay = [row.apm, row.name, row.req_id, row.region, row.workspace,
+                     row.dest, row.worker_group, row.status].join(' ').toLowerCase();
         if (!hay.includes(search)) return false;
       }
       return true;
@@ -858,7 +855,7 @@
     const page  = filteredData.slice(start, end);
 
     if (page.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><h3>No apps found</h3><p>Try adjusting filters or click Refresh.</p></div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><h3>No apps found</h3><p>Try adjusting filters or click Refresh.</p></div></td></tr>';
       return;
     }
 
@@ -878,6 +875,7 @@
         '<td>' + esc(row.name) + '</td>' +
         '<td style="font-size:12px;color:var(--muted);">' + esc(row.req_id) + '</td>' +
         '<td><span class="badge-region">' + esc(row.region || '—') + '</span></td>' +
+        '<td>' + esc(row.workspace || '—') + '</td>' +
         '<td style="text-align:center;">' + (row.routes || 0) + '</td>' +
         '<td><span class="badge-ilm ilm-' + esc(row.ilm_tier || 'none') + '">' + esc(row.ilm_tier || 'none') + '</span></td>' +
         '<td style="text-align:center;">' + (row.roles || 0) + '</td>' +
@@ -914,6 +912,7 @@
     /* Cribl */
     const criblSection = makeDrawerSection('Cribl', `
       <div class="drawer-kv">
+        <span class="k">Cluster</span>       <span class="v">${esc(row.workspace || '—')}</span>
         <span class="k">Worker Group</span>  <span class="v">${esc(row.worker_group || '—')}</span>
         <span class="k">Routes</span>        <span class="v"><strong>${row.routes || 0}</strong></span>
         <span class="k">Destination</span>   <span class="v" style="word-break:break-all;font-size:12px;">${esc(row.dest || '—')}</span>
@@ -1022,26 +1021,20 @@
     document.getElementById('offboardModal').classList.remove('open');
   }
 
-  /* ── Re-onboard ── */
-  async function reonboard(apm, name, region, workerGroup) {
-    const payload = { apmid: apm, appname: name, region: region, worker_group: workerGroup };
-    showResult('Re-onboard: ' + name, 'Sending request to Cribl...', -1);
-
-    try {
-      const resp = await fetch('/cribl/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await resp.json();
-      if (data.errors) {
-        updateResult('Re-onboard: ' + name, data.errors.join('\n'), 1);
-      } else {
-        updateResult('Re-onboard: ' + name, data.output || '(no output)', data.returncode || 0);
-      }
-    } catch (err) {
-      updateResult('Re-onboard Error', err.message, 1);
-    }
+  /* ── Re-onboard — redirect to Pusher or ELK Roles tab based on log_destinations ── */
+  function reonboard(apm, name, region, workerGroup) {
+    const row = allData.find(r => r.apm === apm);
+    const dests = (row && row.log_destinations) || [];
+    const hasElk = dests.includes('elk');
+    const params = new URLSearchParams({
+      apmid:     apm,
+      appname:   name,
+      region:    region || '',
+      workspace: (row && row.workspace) || '',
+      req_id:    (row && row.req_id) || '',
+    });
+    if (hasElk) params.set('tab', 'tab2');
+    window.location.href = '/cribl/app?' + params.toString();
   }
 
   /* ── Result modal ── */
@@ -1071,13 +1064,13 @@
   /* ── Export CSV ── */
   function exportCSV() {
     if (!filteredData.length) return;
-    const headers = ['APM ID', 'App Name', 'REQ ID', 'Region', 'Worker Group',
+    const headers = ['APM ID', 'App Name', 'REQ ID', 'Region', 'Cluster', 'Worker Group',
                      'Routes', 'ILM Tier', 'Roles', 'Status', 'Submitted By', 'Date', 'Destination'];
     const rows = [headers.join(',')];
     filteredData.forEach(row => {
       rows.push([
         csvEsc(row.apm), csvEsc(row.name), csvEsc(row.req_id), csvEsc(row.region),
-        csvEsc(row.worker_group), row.routes || 0, csvEsc(row.ilm_tier),
+        csvEsc(row.workspace), csvEsc(row.worker_group), row.routes || 0, csvEsc(row.ilm_tier),
         row.roles || 0, csvEsc(row.status), csvEsc(row.submitted_by),
         csvEsc(row.date), csvEsc(row.dest),
       ].join(','));
@@ -1113,10 +1106,11 @@
   }
 
   /* ── Event wiring ── */
-  document.getElementById('searchInput').addEventListener('input',  () => { currentPage = 1; applyFilters(); });
-  document.getElementById('regionFilter').addEventListener('change', () => { currentPage = 1; applyFilters(); });
-  document.getElementById('statusFilter').addEventListener('change', () => { currentPage = 1; applyFilters(); });
-  document.getElementById('ilmFilter').addEventListener('change',    () => { currentPage = 1; applyFilters(); });
+  document.getElementById('searchInput').addEventListener('input',   () => { currentPage = 1; applyFilters(); });
+  document.getElementById('regionFilter').addEventListener('change',  () => { currentPage = 1; applyFilters(); });
+  document.getElementById('statusFilter').addEventListener('change',  () => { currentPage = 1; applyFilters(); });
+  document.getElementById('ilmFilter').addEventListener('change',     () => { currentPage = 1; applyFilters(); });
+  document.getElementById('clusterFilter').addEventListener('change', () => { currentPage = 1; applyFilters(); });
 
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); document.getElementById('searchInput').focus(); }
@@ -1126,5 +1120,8 @@
   /* ── Boot ── */
   fetchCatalog();
 </script>
+
+</div><!-- /cf-main -->
+</div><!-- /cf-app -->
 </body>
 </html>

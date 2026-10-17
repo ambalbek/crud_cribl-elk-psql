@@ -1,9 +1,68 @@
 """
 Pydantic-settings configuration for ece_service.
-All values loaded from ECE_* environment variables.
+
+Reads from /app/config.json (mounted from Secret) with env-var overrides.
+Env vars with ECE_ prefix still take precedence when set.
 """
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from config_resolver import resolve_config
+
+logger = logging.getLogger("ece-service")
+
+CONFIG_PATH = Path(os.environ.get("APP_CONFIG_PATH", "/app/config.json"))
+
+
+def _load_root_config() -> dict:
+    """Load full config.json root with globals resolved."""
+    try:
+        if CONFIG_PATH.exists():
+            return resolve_config(json.loads(CONFIG_PATH.read_text()))
+    except Exception:
+        pass
+    return {}
+
+
+def _load_config_json() -> dict:
+    """Load config.json and return the ece section."""
+    return _load_root_config().get("ece", {})
+
+
+def _cfg_defaults() -> dict[str, str]:
+    """Extract ece-service defaults from config.json."""
+    root = _load_root_config()
+    ece = root.get("ece", {})
+    return {
+        "ECE_LOG_LEVEL": root.get("log_level", "INFO"),
+        "ECE_ES_URL": ece.get("es_url", ""),
+        "ECE_ES_TOKEN": ece.get("es_token", ""),
+        "ECE_ES_USERNAME": ece.get("es_username", ""),
+        "ECE_ES_PASSWORD": ece.get("es_password", ""),
+        "ECE_ES_URL_PROD": ece.get("es_url_prod", ""),
+        "ECE_ES_TOKEN_PROD": ece.get("es_token_prod", ""),
+        "ECE_ES_USERNAME_PROD": ece.get("es_username_prod", ""),
+        "ECE_ES_PASSWORD_PROD": ece.get("es_password_prod", ""),
+        "ECE_KIBANA_URL": ece.get("kibana_url", ""),
+        "ECE_KIBANA_TOKEN": ece.get("kibana_token", ""),
+        "ECE_KIBANA_USERNAME": ece.get("kibana_username", ""),
+        "ECE_KIBANA_PASSWORD": ece.get("kibana_password", ""),
+        "ECE_SKIP_SSL": str(ece.get("skip_ssl", False)).lower(),
+        "ECE_TIMEOUT": str(ece.get("timeout", 60)),
+        "ECE_TEMPLATES_DIR": ece.get("templates_dir", "ops_rm_r_templates_output"),
+    }
+
+
+# Inject config.json values as env-var defaults (real env vars still win)
+for _k, _v in _cfg_defaults().items():
+    os.environ.setdefault(_k, _v)
 
 
 class ECESettings(BaseSettings):

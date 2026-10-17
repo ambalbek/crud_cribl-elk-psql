@@ -27,36 +27,11 @@ spec:
           env:
             - name: OPENSSL_CONF
               value: /dev/null
-            - name: LOG_LEVEL
-              valueFrom:
-                configMapKeyRef:
-                  name: cribl-elk-psql-config
-                  key: log-level
-            - name: LOG_FORMAT
-              valueFrom:
-                configMapKeyRef:
-                  name: cribl-elk-psql-config
-                  key: log-format
-            - name: CRIBL_BASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: cribl-elk-psql-secrets
-                  key: cribl-base-url
-            - name: CRIBL_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: cribl-elk-psql-secrets
-                  key: cribl-token
-            - name: CRIBL_SKIP_SSL
-              value: "false"
-            - name: CRIBL_TIMEOUT
-              value: "30"
-            - name: CRIBL_DEFAULT_WORKSPACE
-              value: "default"
-            - name: CRIBL_DEFAULT_ROUTES_TABLE
-              value: "default"
-            - name: CRIBL_MIN_EXISTING_ROUTES
-              value: "1"
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /health
@@ -78,3 +53,7 @@ spec:
             limits:
               cpu: 500m
               memory: 768Mi
+      volumes:
+        - name: app-config
+          secret:
+            secretName: cribl-framework-appconfig

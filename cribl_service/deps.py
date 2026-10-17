@@ -14,7 +14,7 @@ from typing import Any
 
 import requests
 import urllib3
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 # Make project root importable so shared modules (cribl_api, cribl_utils, etc.)
 # resolve correctly whether running via `uvicorn cribl_service.main:app` from /app
@@ -29,13 +29,14 @@ from cribl_api import (  # noqa: E402
     unwrap_response,
 )
 
-from .settings import (  # noqa: E402
-    CRIBL_BASE_URL,
-    CRIBL_TOKEN,
-    CRIBL_USERNAME,
-    CRIBL_PASSWORD,
-    CRIBL_SKIP_SSL,
-)
+from .config import settings as _settings  # noqa: E402
+
+# Single source of truth — derived from pydantic CriblSettings (config.py)
+CRIBL_BASE_URL = _settings.base_url
+CRIBL_TOKEN = _settings.token
+CRIBL_USERNAME = _settings.username
+CRIBL_PASSWORD = _settings.password
+CRIBL_SKIP_SSL = _settings.skip_ssl
 
 logger = logging.getLogger("cribl-service")
 
@@ -44,22 +45,47 @@ _JSON_HEADERS = {
     "Accept": "application/json",
 }
 
+# ── Token cache — avoids 429 rate limiting on rapid sequential requests ──
+# key = (base_url, username), value = (token, expiry_timestamp)
+import time as _time
+_token_cache: dict[tuple[str, str], tuple[str, float]] = {}
+_TOKEN_TTL = 300  # reuse token for 5 minutes
+
 
 class CriblClient:
     """
     One instance per request (created by get_cribl_client dependency).
     Authenticates on construction and exposes typed methods for each resource.
+
+    Per-request credential overrides (from the portal form) take priority
+    over the server-level env vars:
+      - token_override   → used as Bearer token directly
+      - username_override / password_override → used for /auth/login
     """
 
-    def __init__(self) -> None:
-        if not CRIBL_BASE_URL:
+    def __init__(
+        self,
+        *,
+        url_override: str = "",
+        token_override: str = "",
+        username_override: str = "",
+        password_override: str = "",
+    ) -> None:
+        self._base = (url_override.rstrip("/") if url_override else "") or CRIBL_BASE_URL
+        if not self._base:
             raise HTTPException(
                 status_code=500,
-                detail="CRIBL_BASE_URL env var is not set",
+                detail="No Cribl URL configured. Pass it from the UI or set CRIBL_BASE_URL env var.",
             )
-        self._base = CRIBL_BASE_URL
         self._session = self._build_session()
-        token = CRIBL_TOKEN or self._login()
+
+        # Priority: per-request token → env var token (only if no per-request user/pass) → login
+        if token_override:
+            token = token_override
+        elif CRIBL_TOKEN and not (username_override and password_override):
+            token = CRIBL_TOKEN
+        else:
+            token = self._login(username_override, password_override)
         self._session.headers.update({
             **_JSON_HEADERS,
             "Authorization": f"Bearer {token}",
@@ -75,20 +101,35 @@ class CriblClient:
         s.proxies = {"http": "", "https": ""}
         return s
 
-    def _login(self) -> str:
+    def _login(self, username_override: str = "", password_override: str = "") -> str:
         """
         Re-implementation of cribl_api.cribl_login_token() that raises HTTPException
         instead of calling die() / sys.exit().
+        Per-request username/password take priority over env vars.
+        Tokens are cached for _TOKEN_TTL seconds to avoid 429 rate limiting.
         """
-        if not CRIBL_USERNAME or not CRIBL_PASSWORD:
+        username = username_override or CRIBL_USERNAME
+        password = password_override or CRIBL_PASSWORD
+        if not username or not password:
             raise HTTPException(
-                status_code=500,
-                detail="No Cribl credentials: set CRIBL_TOKEN or CRIBL_USERNAME + CRIBL_PASSWORD",
+                status_code=401,
+                detail="No Cribl credentials: provide token or username/password"
+                       " in the Credentials Override section, or set"
+                       " CRIBL_TOKEN / CRIBL_USERNAME + CRIBL_PASSWORD env vars.",
             )
+
+        # Check token cache first
+        cache_key = (self._base, username)
+        cached = _token_cache.get(cache_key)
+        if cached:
+            token, expiry = cached
+            if _time.time() < expiry:
+                return token
+
         url = f"{self._base}/api/v1/auth/login"
         try:
             r = self._session.post(url, headers=_JSON_HEADERS,
-                                   json={"username": CRIBL_USERNAME, "password": CRIBL_PASSWORD},
+                                   json={"username": username, "password": password},
                                    timeout=60)
         except requests.RequestException as exc:
             raise HTTPException(status_code=502, detail=f"Cribl login request error: {exc}")
@@ -100,6 +141,8 @@ class CriblClient:
         token = r.json().get("token")
         if not token:
             raise HTTPException(status_code=502, detail="Cribl login response missing token")
+
+        _token_cache[cache_key] = (token, _time.time() + _TOKEN_TTL)
         return token
 
     # ── Low-level HTTP helpers ──────────────────────────────────────────────
@@ -348,17 +391,20 @@ class CriblClient:
         if dry_run:
             return result
 
-        # Insert all new routes in one PATCH
+        # Create destinations FIRST — Cribl validates route output fields
+        # against existing destinations, so they must exist before routes
+        # reference them.
+        for dest_id, dest in new_dests:
+            self._post(f"/api/v1/m/{worker_group}/system/outputs", dest)
+            logger.info("provision_apps worker_group=%s created dest %s", worker_group, dest_id)
+
+        # Insert all new routes in one PATCH (destinations now exist)
         if new_routes:
             patch_obj = copy.deepcopy(obj)
             pt, pk = self.resolve_routes_target(patch_obj, None)
             pt[pk] = existing_routes[:default_idx] + new_routes + existing_routes[default_idx:]
             self.patch_routes(worker_group, routes_table, patch_obj)
             logger.info("provision_apps worker_group=%s patched %d route(s)", worker_group, len(new_routes))
-
-        for dest_id, dest in new_dests:
-            self._post(f"/api/v1/m/{worker_group}/system/outputs", dest)
-            logger.info("provision_apps worker_group=%s created dest %s", worker_group, dest_id)
 
         return result
 
@@ -434,7 +480,8 @@ class CriblClient:
     # ── Packs ──────────────────────────────────────────────────────────────
 
     def list_packs(self, worker_group: str) -> list[dict]:
-        return self._get(f"/api/v1/m/{worker_group}/packs")
+        data = self._get(f"/api/v1/m/{worker_group}/packs")
+        return data.get("items", data) if isinstance(data, dict) else data
 
     def get_pack(self, worker_group: str, pack_id: str) -> dict[str, Any]:
         return self._get(f"/api/v1/m/{worker_group}/packs/{pack_id}")
@@ -449,6 +496,19 @@ class CriblClient:
         return self._delete(f"/api/v1/m/{worker_group}/packs/{pack_id}")
 
 
-def get_cribl_client() -> CriblClient:
-    """FastAPI dependency — new authenticated client per request."""
-    return CriblClient()
+def get_cribl_client(request: Request) -> CriblClient:
+    """FastAPI dependency — new authenticated client per request.
+
+    Reads optional override headers so the portal can forward
+    the user's form values:
+      X-Cribl-Url      — Cribl base URL (overrides CRIBL_BASE_URL)
+      X-Cribl-Token    — bearer token (skips login)
+      X-Cribl-Username — username for /auth/login
+      X-Cribl-Password — password for /auth/login
+    """
+    return CriblClient(
+        url_override=request.headers.get("X-Cribl-Url", ""),
+        token_override=request.headers.get("X-Cribl-Token", ""),
+        username_override=request.headers.get("X-Cribl-Username", ""),
+        password_override=request.headers.get("X-Cribl-Password", ""),
+    )

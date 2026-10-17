@@ -29,22 +29,11 @@ spec:
           env:
             - name: OPENSSL_CONF
               value: /dev/null
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: cribl-elk-psql-secrets
-                  key: etn-database-url
-            - name: SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cribl-elk-psql-secrets
-                  key: secret-key
-            - name: AUTH_BACKEND
-              value: "local"
-            - name: CRIBL_SERVICE_URL
-              value: "http://cribl-service:8001"
-            - name: ECE_SERVICE_URL
-              value: "http://ece-service:8002"
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /health
@@ -66,3 +55,7 @@ spec:
             limits:
               cpu: 500m
               memory: 768Mi
+      volumes:
+        - name: app-config
+          secret:
+            secretName: cribl-framework-appconfig

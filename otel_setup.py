@@ -102,5 +102,15 @@ def make_json_formatter(service_label: str = "") -> logging.Formatter:
 
 
 def use_json_logging() -> bool:
-    """True when LOG_FORMAT=json is set in the environment."""
-    return os.environ.get("LOG_FORMAT", "").lower() == "json"
+    """True when LOG_FORMAT=json is set (env var or config.json)."""
+    fmt = os.environ.get("LOG_FORMAT", "").strip()
+    if not fmt:
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            _cfg_path = _Path(os.environ.get("APP_CONFIG_PATH", "/app/config.json"))
+            if _cfg_path.exists():
+                fmt = _json.loads(_cfg_path.read_text()).get("log_format", "")
+        except Exception:
+            pass
+    return fmt.lower() == "json"

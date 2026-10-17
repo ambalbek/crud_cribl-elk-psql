@@ -316,7 +316,6 @@
     <a class="nav-link" href="{{ url_for('catalog_page') }}">Service Catalog</a>
     {% if current_role == 'admin' %}
     <a class="nav-link" href="{{ url_for('cribl_app_page') }}">Pusher</a>
-    <a class="nav-link" href="{{ url_for('portal_admin_update_status') }}">Admin</a>
     {% endif %}
   </div>
   {% if current_user %}

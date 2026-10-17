@@ -26,7 +26,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .routers import destinations, edge, leaders, packs, pipelines, provision, routes, stream, worker_groups, workgroups
-from .settings import LOG_LEVEL
+from .config import settings as _settings
+
+LOG_LEVEL = _settings.log_level
 
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(
@@ -64,6 +66,23 @@ app.include_router(leaders.router,       tags=["leaders"])
 app.include_router(stream.router,        tags=["stream"])
 app.include_router(edge.router,          tags=["edge"])
 app.include_router(workgroups.router,    tags=["workgroups"])
+
+# ── Startup diagnostics ──────────────────────────────────────────────────────
+_log = logging.getLogger("cribl-service")
+_log.info("=" * 60)
+_log.info("cribl-service startup config:")
+_log.info("  CRIBL_BASE_URL:  %s", _settings.base_url or "(EMPTY — will fail)")
+_log.info("  CRIBL_TOKEN:     %s", "set" if _settings.token else "(empty)")
+_log.info("  CRIBL_USERNAME:  %s", _settings.username or "(empty)")
+_log.info("  CRIBL_PASSWORD:  %s", "***" if _settings.password else "(empty)")
+_log.info("  CRIBL_SKIP_SSL:  %s", _settings.skip_ssl)
+_log.info("  config.json:     %s", "loaded" if _settings.base_url else "NOT FOUND or empty")
+_log.info("=" * 60)
+
+if not _settings.base_url:
+    _log.error("CRIBL_BASE_URL is empty — all Cribl API calls will fail!")
+if not _settings.token and not _settings.username:
+    _log.error("No Cribl credentials — set credentials.token or credentials.username/password in config.json")
 
 
 @app.get("/health", tags=["health"])

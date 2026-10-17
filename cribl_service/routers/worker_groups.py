@@ -34,7 +34,7 @@ def get_worker_group(
     return client.get_worker_group(group_id)
 
 
-@router.post("")
+@router.post("", status_code=201)
 def create_worker_group(
     body: dict = Body(...),
     client: CriblClient = Depends(get_cribl_client),

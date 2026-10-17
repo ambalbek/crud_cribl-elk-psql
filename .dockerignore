@@ -13,7 +13,6 @@ Dockerfile
 .dockerignore
 
 # Service directories not needed by root Dockerfile
-etn_onboarding/
 untracked_apmids/
 
 # Docs and config templates

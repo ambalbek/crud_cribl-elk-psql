@@ -30,6 +30,7 @@ class RequestStatus(str, enum.Enum):
     reverify = "reverify"
     complete = "complete"
     cancelled = "cancelled"
+    offboarded = "offboarded"
 
 
 class OnboardingRequest(db.Model):
@@ -61,6 +62,9 @@ class OnboardingRequest(db.Model):
     log_destinations = db.Column(JSONB, nullable=True, default=list)
     log_types = db.Column(JSONB, nullable=True, default=list)
     ilm_tier = db.Column(String(32), nullable=True, default="none")
+
+    # ── ELK capacity ─────────────────────────────────────────────
+    elk_capacity = db.Column(JSONB, nullable=True)
 
     # ── Entitlements ─────────────────────────────────────────────
     entitlement_groups = db.Column(JSONB, nullable=True, default=list)
