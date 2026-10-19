@@ -21,6 +21,13 @@
 
   "auth": {
     "session_lifetime_minutes": 480,
+    "roles": {
+      "admin":      { "pages": ["*"] },
+      "developer":  { "pages": ["portal", "catalog", "entitlements"] },
+      "compliance": { "pages": ["compliance", "catalog"] },
+      "user":       { "pages": ["portal", "entitlements"] }
+    },
+    "ad_group_mapping": {},
     "local_admins": [
       {
         "username": "admin",
@@ -28,7 +35,10 @@
         "display_name": "Local Admin"
       }
     ],
-    "local_users": []
+    "local_users": [
+      { "username": "dev1", "password": "dev1", "display_name": "Developer", "role": "developer" },
+      { "username": "auditor", "password": "auditor", "display_name": "Auditor", "role": "compliance" }
+    ]
   },
 
   "route_templates": {

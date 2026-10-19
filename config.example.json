@@ -30,7 +30,10 @@
         "display_name": "Local Admin"
       }
     ],
-    "local_users": []
+    "local_users": [
+      { "username": "dev1", "password": "dev1", "display_name": "Developer", "role": "developer" },
+      { "username": "auditor", "password": "auditor", "display_name": "Auditor", "role": "compliance" }
+    ]
   },
 
   "route_templates": {

@@ -1021,9 +1021,11 @@
     document.getElementById('offboardModal').classList.remove('open');
   }
 
-  /* ── Re-onboard — redirect to Cribl Pusher with pre-filled fields ── */
+  /* ── Re-onboard — redirect to Pusher or ELK Roles tab based on log_destinations ── */
   function reonboard(apm, name, region, workerGroup) {
     const row = allData.find(r => r.apm === apm);
+    const dests = (row && row.log_destinations) || [];
+    const hasElk = dests.includes('elk');
     const params = new URLSearchParams({
       apmid:     apm,
       appname:   name,
@@ -1031,6 +1033,7 @@
       workspace: (row && row.workspace) || '',
       req_id:    (row && row.req_id) || '',
     });
+    if (hasElk) params.set('tab', 'tab2');
     window.location.href = '/cribl/app?' + params.toString();
   }
 

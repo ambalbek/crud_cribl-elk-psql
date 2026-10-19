@@ -1,0 +1,222 @@
+;
+const SVGNS = "http://www.w3.org/2000/svg";
+const $ = i => document.getElementById(i);
+
+/* ---- accurate text measurement, so nothing ever overflows ---- */
+const mc = document.createElement("canvas").getContext("2d");
+function tw(t, px, weight) {
+  mc.font = `${weight||400} ${px}px Inter, "Segoe UI", Helvetica, Arial, sans-serif`;
+  return mc.measureText(t).width;
+}
+function wrap(t, px, weight, maxw) {
+  if (!t) return [];
+  const words = String(t).split(/\s+/); const out = []; let line = "";
+  for (const w of words) {
+    const cand = line ? line + " " + w : w;
+    if (tw(cand, px, weight) <= maxw || !line) line = cand;
+    else { out.push(line); line = w; }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/* ---- sizing ---- */
+const PAD = 20, GAP = 16, TILE_W = 232, ICON = 40;
+const F = { name: 14.5, sub: 11, desc: 11.5, gname: 14, gsub: 11 };
+const LH = { name: 19, sub: 15, desc: 16 };
+
+function measure(n) {
+  if (!n.children.length) {
+    const w = TILE_W, inner = w - 24;
+    let h = 14;
+    if (n.icon) h += ICON + 8;
+    h += wrap(n.name, F.name, 650, inner).length * LH.name;
+    if (n.sub) h += wrap(n.sub, F.sub, 400, inner).length * LH.sub;
+    if (n.desc) h += 5 + wrap(n.desc, F.desc, 400, inner).length * LH.desc;
+    n.w = w; n.h = Math.max(96, h + 14);
+    return;
+  }
+  n.children.forEach(measure);
+  const kids = n.children;
+  const cols = Math.min(kids.length,
+    n.cols || (kids.length === 1 ? 1 : kids.length <= 4 ? 2 : kids.length <= 9 ? 3 : 4));
+  const leaves = kids.filter(c => !c.children.length);
+  if (leaves.length) {
+    const lw = Math.max(...leaves.map(c => c.w));
+    leaves.forEach(c => { c.w = lw; });
+  }
+  const rows = [];
+  for (let i = 0; i < kids.length; i += cols) rows.push(kids.slice(i, i + cols));
+  rows.forEach(r => { const rh = Math.max(...r.map(c => c.h)); r.forEach(c => { if (!c.children.length) c.h = rh; }); });
+  const inner = Math.max(...rows.map(r => r.reduce((a, c) => a + c.w, 0) + (r.length - 1) * GAP));
+  n._rows = rows;
+  n.w = inner + 2 * PAD;
+  const iw = n.w - 2 * PAD;
+  let hdr = 12;
+  hdr += wrap(n.name, F.gname, 700, iw).length * 19;
+  if (n.sub) hdr += wrap(n.sub, F.gsub, 400, iw).length * 15;
+  if (n.desc) hdr += wrap(n.desc, F.desc, 400, iw).length * 16;
+  n._hdr = hdr + 14;
+  n.h = n._hdr + rows.reduce((a, r) => a + Math.max(...r.map(c => c.h)), 0)
+        + (rows.length - 1) * GAP + PAD;
+}
+function place(n, x, y) {
+  n.x = x; n.y = y;
+  if (!n.children.length) return;
+  let cy = y + n._hdr;
+  for (const r of n._rows) {
+    let cx = x + PAD;
+    const rh = Math.max(...r.map(c => c.h));
+    for (const c of r) { place(c, cx, cy); cx += c.w + GAP; }
+    cy += rh + GAP;
+  }
+}
+
+/* ---- palette: light tiles, coloured frames ---- */
+const C = {
+  platform:  { frame:"#0F6CBD", tint:"#EAF3FB", tile:"#FFFFFF", txt:"#0B4F8A" },
+  capability:{ frame:"#0F6CBD", tint:"#FFFFFF", tile:"#FFFFFF", txt:"#16232F" },
+  part:      { frame:"#7FA9CE", tint:"#FFFFFF", tile:"#FFFFFF", txt:"#16232F" },
+  store:     { frame:"#B5539C", tint:"#FCF1F8", tile:"#FFFFFF", txt:"#8C3B77" },
+  person:    { frame:"#16232F", tint:"#F3F5F7", tile:"#FFFFFF", txt:"#16232F" },
+  external:  { frame:"#5F7183", tint:"#F6F8FA", tile:"#FFFFFF", txt:"#3E4E5E" },
+  infra:     { frame:"#8B9AA8", tint:"#F7F9FB", tile:"#FFFFFF", txt:"#3E4E5E" },
+  group:     { frame:"#C3CFDA", tint:"transparent", tile:"#FFFFFF", txt:"#41556A" },
+  groupdark: { frame:"#C3CFDA", tint:"transparent", tile:"#FFFFFF", txt:"#41556A" },
+  accent:    { frame:"#D9730D", tint:"#FDF3E7", tile:"#FFFFFF", txt:"#8A4A05" },
+};
+
+let cur = 0, vb = null;
+
+function el(t, a, p) {
+  const n = document.createElementNS(SVGNS, t);
+  for (const k in a) n.setAttribute(k, a[k]);
+  if (p) p.appendChild(n);
+  return n;
+}
+function txt(p, s, x, y, px, weight, fill, anchor) {
+  const t = el("text", { x, y, "font-size": px, "font-weight": weight || 400,
+    fill, "font-family": "var(--sans)", "text-anchor": anchor || "start" }, p);
+  t.textContent = s;
+  return t;
+}
+
+function draw(n, g) {
+  const c = C[n.kind] || C.group;
+  const grp = n.children.length > 0;
+  const gg = el("g", { class: grp ? "grp" : "tile" }, g);
+
+  el("rect", { class: "bd", x: n.x, y: n.y, width: n.w, height: n.h,
+    rx: grp ? 10 : 8, fill: grp ? c.tint : c.tile,
+    stroke: c.frame, "stroke-width": grp ? 1.6 : 1.2,
+    "stroke-dasharray": (n.kind === "group" || n.kind === "groupdark") ? "7 6" : "none" }, gg);
+
+  if (grp) {
+    // accent stripe so nested frames stay distinguishable
+    if (n.kind !== "group" && n.kind !== "groupdark")
+      el("rect", { x: n.x, y: n.y, width: 4, height: n.h, rx: 2, fill: c.frame }, gg);
+    let ty = n.y + 26;
+    const iw = n.w - 2 * PAD;
+    for (const ln of wrap(n.name, F.gname, 700, iw)) {
+      txt(gg, ln, n.x + PAD, ty, F.gname, 700, c.txt); ty += 19;
+    }
+    for (const ln of wrap(n.sub, F.gsub, 400, iw)) {
+      txt(gg, ln, n.x + PAD, ty, F.gsub, 400, "#6B7E92"); ty += 15;
+    }
+    for (const ln of wrap(n.desc, F.desc, 400, iw)) {
+      txt(gg, ln, n.x + PAD, ty, F.desc, 400, "#6B7E92"); ty += 16;
+    }
+    n.children.forEach(k => draw(k, g));
+    return;
+  }
+
+  const cx = n.x + n.w / 2, iw = n.w - 24;
+  let ty = n.y + 16;
+  if (n.icon && D.icons[n.icon]) {
+    el("image", { href: D.icons[n.icon], x: cx - ICON / 2, y: ty,
+      width: ICON, height: ICON }, gg);
+    ty += ICON + 8;
+  }
+  ty += 4;
+  for (const ln of wrap(n.name, F.name, 650, iw)) {
+    txt(gg, ln, cx, ty + 8, F.name, 650, c.txt, "middle"); ty += LH.name;
+  }
+  for (const ln of wrap(n.sub, F.sub, 400, iw)) {
+    txt(gg, ln, cx, ty + 6, F.sub, 400, "#7C8DA0", "middle"); ty += LH.sub;
+  }
+  if (n.desc) { ty += 4;
+    for (const ln of wrap(n.desc, F.desc, 400, iw)) {
+      txt(gg, ln, cx, ty + 6, F.desc, 400, "#5C6E80", "middle"); ty += LH.desc;
+    }
+  }
+}
+
+function render(i) {
+  cur = i;
+  const p = D.pages[i];
+  measure(p.root); place(p.root, 0, 0);
+  const svg = $("cv");
+  svg.innerHTML = "";
+  const m = 26;
+  vb = { x: -m, y: -m, w: p.root.w + 2 * m, h: p.root.h + 2 * m };
+  svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  const g = el("g", {}, svg);
+  draw(p.root, g);
+
+  $("ttl").textContent = p.title;
+  $("sub").textContent = p.sub;
+  $("foot").innerHTML = p.notes.map(n => `<div>${n}</div>`).join("");
+  rail();
+}
+
+function rail() {
+  const box = $("pages"); box.innerHTML = "";
+  D.pages.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.className = "pg";
+    b.setAttribute("aria-current", i === cur ? "true" : "false");
+    b.innerHTML = `<span class="n">${p.level}</span>
+      <span><span class="t">${p.title}</span></span>`;
+    b.onclick = () => render(i);
+    box.appendChild(b);
+  });
+}
+
+(function () {
+  const svg = $("cv"); let drag = null;
+  svg.addEventListener("wheel", e => {
+    e.preventDefault();
+    const k = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    vb = { x: vb.x + (vb.w - vb.w * k) * px, y: vb.y + (vb.h - vb.h * k) * py,
+           w: vb.w * k, h: vb.h * k };
+    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  }, { passive: false });
+  svg.addEventListener("pointerdown", e => {
+    drag = { x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y };
+    svg.classList.add("drag"); svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const r = svg.getBoundingClientRect();
+    vb.x = drag.vx - (e.clientX - drag.x) * (vb.w / r.width);
+    vb.y = drag.vy - (e.clientY - drag.y) * (vb.h / r.height);
+    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  });
+  ["pointerup", "pointercancel"].forEach(t =>
+    svg.addEventListener(t, () => { drag = null; svg.classList.remove("drag"); }));
+})();
+
+$("fit").onclick = () => render(cur);
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowRight") render(Math.min(D.pages.length - 1, cur + 1));
+  if (e.key === "ArrowUp" || e.key === "ArrowLeft") render(Math.max(0, cur - 1));
+});
+
+document.fonts && document.fonts.ready.then(() => render(0));
+render(0);
+</script>
+</body>
+</html>

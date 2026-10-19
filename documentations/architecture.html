@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Application Onboarding — Architecture</title>
+<style>
+  :root{
+    --bg:#FFFFFF; --canvas:#F7F9FC; --rail:#0E1B2A; --rail2:#182B41;
+    --ink:#16232F; --dim:#64768A; --line:#DCE4EC;
+    --azure:#0F6CBD; --deep:#0B4F8A; --grey:#5F7183; --sec:#7A3E9D;
+    --data:#B5539C; --build:#D9730D; --gold:#F5A800;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+       display:grid;grid-template-columns:250px 1fr;overflow:hidden}
+
+  aside{background:var(--rail);color:#E8EFF6;display:flex;flex-direction:column;min-height:0}
+  .brand{padding:20px 18px 16px;border-bottom:1px solid #22364C}
+  .brand h1{margin:0;font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+  .brand p{margin:5px 0 0;font-size:11px;color:#93A9BF;line-height:1.45}
+  .eyebrow{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
+           text-transform:uppercase;color:#7C93AB;padding:16px 18px 8px}
+  .pages{padding:0 10px}
+  .pg{display:grid;grid-template-columns:24px 1fr;gap:10px;width:100%;align-items:center;
+      text-align:left;background:none;border:0;color:inherit;cursor:pointer;
+      padding:10px 8px;border-radius:7px;font:inherit}
+  .pg:hover{background:var(--rail2)}
+  .pg[aria-current="true"]{background:var(--rail2)}
+  .pg .n{font-family:var(--mono);font-size:10.5px;color:#7C93AB;
+         border:1px solid #2C4460;border-radius:5px;text-align:center;line-height:19px;height:21px}
+  .pg[aria-current="true"] .n{background:var(--gold);border-color:var(--gold);color:#0E1B2A;font-weight:700}
+  .pg .t{font-size:12.5px;font-weight:560}
+  .pg:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .railnote{margin-top:auto;padding:14px 18px 18px;font-size:10.5px;
+            color:#7C93AB;line-height:1.5;border-top:1px solid #22364C}
+
+  main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  header{padding:16px 22px 12px;border-bottom:1px solid var(--line);display:flex;gap:20px;align-items:flex-start}
+  header .h{flex:1;min-width:0}
+  header h2{margin:0;font-size:20px;font-weight:660;letter-spacing:-.015em}
+  header p{margin:5px 0 0;font-size:12px;color:var(--dim)}
+  .tools{display:flex;gap:7px}
+  .tool{font:inherit;font-size:11.5px;background:#fff;border:1px solid var(--line);
+        border-radius:6px;padding:6px 10px;cursor:pointer;color:var(--ink)}
+  .tool:hover{background:#F2F6FA}
+  .tool:focus-visible{outline:2px solid var(--azure)}
+
+  .stage{position:relative;flex:1;min-height:0;background:var(--canvas);
+         background-image:radial-gradient(#E2E9F0 1px,transparent 1px);
+         background-size:22px 22px}
+  svg{width:100%;height:100%;display:block;cursor:grab}
+  svg.drag{cursor:grabbing}
+  .foot{position:absolute;left:0;right:0;bottom:0;padding:10px 22px;
+        background:linear-gradient(transparent,rgba(247,249,252,.96) 40%);
+        font-size:11.5px;color:var(--dim);line-height:1.55;pointer-events:none}
+
+  .tile{cursor:default}
+  .tile rect.bd{transition:filter .14s ease}
+  .tile:hover rect.bd{filter:drop-shadow(0 2px 6px rgba(15,60,110,.18))}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media (max-width:880px){body{grid-template-columns:1fr}aside{display:none}}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">
+    <h1>Application Onboarding</h1>
+    <p>Architecture, from the whole picture down to the estate.</p>
+  </div>
+  <div class="eyebrow">Pages</div>
+  <div class="pages" id="pages"></div>
+  <div class="railnote">Boxes contain what runs inside them. Drag to pan, scroll to zoom.</div>
+</aside>
+
+<main>
+  <header>
+    <div class="h">
+      <h2 id="ttl"></h2>
+      <p id="sub"></p>
+    </div>
+    <div class="tools"><button class="tool" id="fit">Fit</button></div>
+  </header>
+  <div class="stage">
+    <svg id="cv" role="img" aria-label="Architecture diagram"></svg>
+    <div class="foot" id="foot"></div>
+  </div>
+</main>
+
+<script>
+const D = {"pages":[{"key":"overall","level":"1","title":"How an application gets onboarded","sub":"The whole thing on one page. Onboarding means selecting a data type and attaching the matching Cribl Pack.","notes":["The service sits between application teams who want monitoring and the three systems that implement it: Cribl Stream for routing, Elasticsearch/Kibana for search, and Azure Blob for archive.","data_type (what system produced the log) maps to a vetted Cribl Pack in a registry table. That is the whole feature. We do not generate pipelines.","Blob containers are created manually and verified \u2014 never auto-created."],"root":{"id":"root","name":"","kind":"group","sub":"","desc":"","icon":"","cols":3,"children":[{"id":"g_ask","name":"Who asks","kind":"group","sub":"","desc":"","icon":"","cols":1,"children":[{"id":"team","name":"Application team","kind":"person","sub":"Wants their app monitored","desc":"Fills in one request form with data type, log types, regions, and entitlement groups.","icon":""},{"id":"platform","name":"Platform team","kind":"person","sub":"Reviews and configures","desc":"Validates the request, agrees the detail, and triggers the delivery stages.","icon":""}]},{"id":"svc","name":"Application Onboarding Service","kind":"platform","sub":"Four microservices behind one portal","desc":"One request in, a working monitoring setup out. The portal orchestrates intake through delivery without calling Cribl or Elasticsearch directly.","icon":"","cols":2,"children":[{"id":"c_intake","name":"Take the request (Intake)","kind":"capability","sub":"","desc":"One front door. The form knows who you are when you sign in. Validates and queues.","icon":""},{"id":"c_design","name":"Agree what\u2019s needed (Solutioning)","kind":"capability","sub":"","desc":"A guided session using a standard workbook. Entity mapping, data sources, volumes, retention.","icon":""},{"id":"c_deliver","name":"Set it all up (Delivery)","kind":"capability","sub":"","desc":"Six delivery stages: verify storage, create destination, attach pack, create route, configure collection. Each tracked individually.","icon":""},{"id":"c_turnover","name":"Hand it over (Validation + Reverify)","kind":"capability","sub":"","desc":"Customer demo and sign-off, then platform team re-verifies full configuration before marking complete.","icon":""},{"id":"c_audit","name":"Keep the record (Audit)","kind":"store","sub":"","desc":"Every step timestamped with actor, action, and outcome. Immutable audit log.","icon":""},{"id":"c_packs","name":"Pack registry","kind":"store","sub":"","desc":"Vetted Cribl Packs by data_type. Only approved packs are ever referenced. Pack = pre-built pipeline bundle.","icon":""}]},{"id":"g_targets","name":"What gets configured","kind":"group","sub":"","desc":"","icon":"","cols":1,"children":[{"id":"cribl","name":"Log routing (Cribl Stream)","kind":"external","sub":"Routes, destinations, packs","desc":"Picks up logs and sends them to the right places. 48 worker groups across 4 regions and 3 environments.","icon":""},{"id":"elk","name":"Search and dashboards (Elasticsearch + Kibana)","kind":"external","sub":"Roles, mappings, retention, dashboards","desc":"Where the app team looks at their data. Roles scoped by apmId.","icon":""},{"id":"blob","name":"Long-term archive (Azure Blob Storage)","kind":"external","sub":"90-day retention","desc":"Containers created manually, verified by a write-and-delete probe. Never auto-created.","icon":""}]}]}},{"key":"services","level":"2","title":"Microservice architecture","sub":"Four services, strict call boundaries. etn_onboarding never calls Cribl or Elasticsearch directly.","notes":["etn_onboarding only talks to cribl_service and ece_service over HTTP \u2014 never directly to Cribl Stream or Elasticsearch.","cribl_service and ece_service are stateless FastAPI wrappers. All state lives in PostgreSQL, owned by etn_onboarding.","app.py is the unified Flask web layer: portal UI, cribl-pusher integration, and ELK role management."],"root":{"id":"root","name":"","kind":"group","sub":"","desc":"","icon":"","cols":2,"children":[{"id":"g_services","name":"Services","kind":"group","sub":"","desc":"","icon":"","cols":2,"children":[{"id":"app","name":"app.py (Flask :5000)","kind":"platform","sub":"Unified web layer","desc":"Portal UI + cribl-pusher + ELK role manager. Templates, LDAP autocomplete, session management.","icon":"","cols":2,"children":[{"id":"app_portal","name":"Portal UI","kind":"part","sub":"Templates","desc":"Request listing, detail views, submission forms, catalog, entitlements.","icon":""},{"id":"app_pusher","name":"Cribl Pusher","kind":"part","sub":"Bulk provisioning","desc":"Interactive workspace selection, route insertion, destination upsert, snapshots.","icon":""},{"id":"app_roles","name":"ELK Role Manager","kind":"part","sub":"role_rm.py wrapper","desc":"Generate and push ES security roles and role-mappings via Jinja2 templates.","icon":""},{"id":"app_ldap","name":"LDAP Lookup","kind":"part","sub":"lanId autocomplete","desc":"Resolves user identity from corporate directory for portal forms.","icon":""}]},{"id":"etn","name":"etn_onboarding (Flask :5001)","kind":"platform","sub":"Onboarding backend","desc":"Multi-stage request lifecycle. State machine, pack resolver, audit trail. Calls cribl_service and ece_service \u2014 never Cribl or ES directly.","icon":"","cols":2,"children":[{"id":"etn_intake","name":"Intake blueprint","kind":"part","sub":"/api/intake/","desc":"Submit and validate new requests. Pins pack_id and pack_version from registry at submission.","icon":""},{"id":"etn_engagement","name":"Engagement blueprint","kind":"part","sub":"/api/engagement/","desc":"Schedule discovery meetings and manage interactions.","icon":""},{"id":"etn_solution","name":"Solutioning blueprint","kind":"part","sub":"/api/solutioning/","desc":"Entity mapping, workbook data collection.","icon":""},{"id":"etn_delivery","name":"Delivery blueprint","kind":"part","sub":"/api/delivery/","desc":"Trigger storage verification, destination, pack, route, and collection jobs.","icon":""},{"id":"etn_validation","name":"Validation blueprint","kind":"part","sub":"/api/validation/","desc":"Customer turnover and reverify gates.","icon":""},{"id":"etn_state","name":"State machine","kind":"part","sub":"","desc":"Enforces legal transitions between 16 statuses. Writes audit row on every change.","icon":""},{"id":"etn_packs","name":"Pack resolver","kind":"part","sub":"","desc":"Looks up approved pack by data_type, falls back to 'other', returns passthru if none found.","icon":""},{"id":"etn_clients","name":"Service clients","kind":"part","sub":"HTTP proxies","desc":"cribl_client.py \u2192 cribl_service. ece_client.py \u2192 ece_service. Never direct.","icon":""}]},{"id":"cribl_svc","name":"cribl_service (FastAPI :8001)","kind":"platform","sub":"Cribl Stream API wrapper","desc":"Stateless. Async httpx client. Routes, destinations, pipelines, packs, worker groups, Edge fleets, provision, stream.","icon":"","cols":2,"children":[{"id":"cs_routes","name":"Routes","kind":"part","sub":"CRUD","desc":"Route table operations per worker group.","icon":""},{"id":"cs_dests","name":"Destinations","kind":"part","sub":"CRUD","desc":"Output/destination management.","icon":""},{"id":"cs_packs","name":"Packs","kind":"part","sub":"CRUD","desc":"Pack management and attachment.","icon":""},{"id":"cs_pipes","name":"Pipelines","kind":"part","sub":"CRUD","desc":"Pipeline operations.","icon":""},{"id":"cs_edge","name":"Edge","kind":"part","sub":"Fleets","desc":"Cribl Edge fleet configuration.","icon":""},{"id":"cs_provision","name":"Provision","kind":"part","sub":"Bulk ops","desc":"Bulk route and destination provisioning.","icon":""},{"id":"cs_stream","name":"Stream","kind":"part","sub":"Semantic APIs","desc":"Higher-level Cribl Stream operations.","icon":""},{"id":"cs_workers","name":"Worker groups","kind":"part","sub":"Listing","desc":"Enumerate worker groups and workgroups.","icon":""}]},{"id":"ece_svc","name":"ece_service (FastAPI :8002)","kind":"platform","sub":"Elasticsearch API wrapper","desc":"Stateless. Async httpx client. Dual cluster support (nonprod + prod).","icon":"","cols":2,"children":[{"id":"es_roles","name":"Roles","kind":"part","sub":"CRUD + provision","desc":"ES security roles scoped by apmId.","icon":""},{"id":"es_rm","name":"Role mappings","kind":"part","sub":"CRUD","desc":"Map AD groups to ES roles.","icon":""},{"id":"es_idx","name":"Indexes","kind":"part","sub":"Templates","desc":"Index template management.","icon":""},{"id":"es_ilm","name":"ILM","kind":"part","sub":"Policies","desc":"Index lifecycle management policies.","icon":""},{"id":"es_ls","name":"Logstash pipelines","kind":"part","sub":"CRUD","desc":"Logstash pipeline configuration.","icon":""},{"id":"es_kb","name":"Kibana dashboards","kind":"part","sub":"Saved objects","desc":"Dashboard and visualization management.","icon":""}]}]},{"id":"g_external","name":"External systems","kind":"group","sub":"","desc":"","icon":"","cols":2,"children":[{"id":"cribl_stream","name":"Cribl Stream","kind":"external","sub":"REST :9000","desc":"Routes, destinations, packs. 48 worker groups.","icon":""},{"id":"elasticsearch","name":"Elasticsearch","kind":"external","sub":"REST :9200","desc":"Nonprod and prod clusters. Roles, mappings, ILM.","icon":""},{"id":"kibana","name":"Kibana","kind":"external","sub":":5601","desc":"Dashboards and saved objects.","icon":""},{"id":"postgres","name":"PostgreSQL","kind":"store","sub":"Managed, :5432","desc":"Requests, audit logs, delivery jobs, pack registry. Owned by etn_onboarding.","icon":""},{"id":"blob_store","name":"Azure Blob Storage","kind":"external","sub":"Archive","desc":"90-day retention. Containers manually created, verified with write-delete probe.","icon":""},{"id":"sso","name":"Single sign-on","kind":"external","sub":"OIDC","desc":"Identity for portal sign-in.","icon":""}]}]}},{"key":"state","level":"3","title":"Onboarding state machine","sub":"13 stages from intake to complete. Any stage can cancel. Delivery stages can fail.","notes":["The state machine follows: intake_pending \u2192 intake_validated \u2192 engagement \u2192 solutioning \u2192 storage_pending \u2192 storage_confirmed \u2192 delivery_destination \u2192 delivery_pack \u2192 delivery_route \u2192 delivery_collection \u2192 delivery_complete \u2192 validation \u2192 reverify \u2192 complete.","reverify is a human gate \u2014 the platform team re-verifies the full configuration before marking complete. No automated checks run here.","data_type and log_type are orthogonal. data_type is what system produced the log (Mulesoft). log_type is the business category (RIM, TRANS, BIZ, LGLHLD)."],"root":{"id":"root","name":"","kind":"group","sub":"","desc":"","icon":"","cols":3,"children":[{"id":"g_early","name":"Early stages","kind":"group","sub":"Request submission and planning","desc":"","icon":"","cols":1,"children":[{"id":"s_ip","name":"intake_pending","kind":"capability","sub":"Initial state","desc":"Request submitted with app name, apmId, data_type, regions, log types. Pack pinned from registry.","icon":""},{"id":"s_iv","name":"intake_validated","kind":"capability","sub":"Form validated","desc":"All required fields present. apmId unique. Pack exists and is approved.","icon":""},{"id":"s_eng","name":"engagement","kind":"capability","sub":"Discovery meeting","desc":"Platform team and app team agree on scope and timeline.","icon":""},{"id":"s_sol","name":"solutioning","kind":"capability","sub":"Workbook and mapping","desc":"Entity mapping, data sources, volumes, retention, entitlement groups collected.","icon":""}]},{"id":"g_delivery","name":"Delivery stages","kind":"group","sub":"Can transition to delivery_failed or cancelled","desc":"","icon":"","cols":1,"children":[{"id":"s_sp","name":"storage_pending","kind":"accent","sub":"Verify blob container","desc":"Checks that the manually-created container exists via a write-and-delete probe. Never creates it.","icon":""},{"id":"s_sc","name":"storage_confirmed","kind":"accent","sub":"Container verified","desc":"Write-delete probe succeeded. Container name and verification timestamp recorded.","icon":""},{"id":"s_dd","name":"delivery_destination","kind":"accent","sub":"Create Cribl destination","desc":"Azure Blob destination created in Cribl. create_container option explicitly false.","icon":""},{"id":"s_dp","name":"delivery_pack","kind":"accent","sub":"Attach Cribl Pack","desc":"Vetted pack from registry attached to route or source. Pack version pinned at intake.","icon":""},{"id":"s_dr","name":"delivery_route","kind":"accent","sub":"Create Cribl route","desc":"Route with apmId filter inserted above first final:true route.","icon":""},{"id":"s_dc","name":"delivery_collection","kind":"accent","sub":"Configure Edge fleet","desc":"Cribl Edge fleet configured for log collection from the application.","icon":""},{"id":"s_done","name":"delivery_complete","kind":"accent","sub":"All jobs succeeded","desc":"All delivery jobs tracked individually. Each has status, external ref, and result.","icon":""}]},{"id":"g_close","name":"Closing stages","kind":"group","sub":"Human gates before completion","desc":"","icon":"","cols":1,"children":[{"id":"s_val","name":"validation","kind":"capability","sub":"Customer demo","desc":"Dashboard handed over, demonstrated, and signed off by the customer.","icon":""},{"id":"s_rev","name":"reverify","kind":"capability","sub":"Platform re-check","desc":"Human gate. Platform team re-verifies routes, packs, destinations, storage. No automated checks.","icon":""},{"id":"s_comp","name":"complete","kind":"capability","sub":"Final state","desc":"Onboarding finished. Can still transition to cancelled.","icon":""},{"id":"s_fail","name":"delivery_failed","kind":"external","sub":"From any delivery stage","desc":"Delivery stage failed. Can transition to cancelled.","icon":""},{"id":"s_cancel","name":"cancelled","kind":"external","sub":"Terminal state","desc":"Request cancelled. Reachable from any stage. No further transitions.","icon":""},{"id":"s_off","name":"offboarded","kind":"external","sub":"Post-completion","desc":"Application removed from monitoring after having been fully onboarded.","icon":""}]}]}},{"key":"technical","level":"4","title":"Technical deployment","sub":"Where the code runs and what sits inside each box.","notes":["Only the application and the secrets operator deploy to the cluster. The database is a managed service; everything else runs elsewhere.","Every call out of the cluster crosses a network boundary and uses a credential from the vault.","cribl-pusher.py and role_rm.py are operationally live CLI tools. Every current flag keeps working."],"root":{"id":"root","name":"","kind":"group","sub":"","desc":"","icon":"","cols":2,"children":[{"id":"g_cluster","name":"Azure Red Hat OpenShift","kind":"group","sub":"The only place our own code runs","desc":"","icon":"","cols":1,"children":[{"id":"g_ns","name":"Namespace: cribl-onboarding","kind":"group","sub":"","desc":"","icon":"","cols":2,"children":[{"id":"d_app","name":"app.py (Flask, 2 replicas)","kind":"platform","sub":"Port 5000, TLS edge","desc":"Unified web layer: portal UI, cribl-pusher integration, ELK role management, LDAP lookup.","icon":"","cols":1,"children":[]},{"id":"d_etn","name":"etn_onboarding (Flask, 2 replicas)","kind":"platform","sub":"Port 5001","desc":"Onboarding backend: state machine, pack resolver, audit trail. Calls cribl_service and ece_service over HTTP.","icon":"","cols":1,"children":[]},{"id":"d_cribl_svc","name":"cribl_service (FastAPI)","kind":"platform","sub":"Port 8001","desc":"Stateless Cribl Stream API wrapper. Async httpx. Routes, destinations, packs, Edge, provision, stream.","icon":"","cols":1,"children":[]},{"id":"d_ece_svc","name":"ece_service (FastAPI)","kind":"platform","sub":"Port 8002","desc":"Stateless Elasticsearch API wrapper. Async httpx. Dual cluster support. Roles, mappings, ILM, Logstash, Kibana.","icon":"","cols":1,"children":[]},{"id":"d_entitlement","name":"entitlement (Flask)","kind":"platform","sub":"Port 5002, optional","desc":"Elasticsearch entitlement and role-mapping query service.","icon":"","cols":1,"children":[]},{"id":"d_eso","name":"External Secrets Operator","kind":"infra","sub":"Kubernetes operator","desc":"Pulls credentials from the vault into the cluster. Refreshes on rotation.","icon":""},{"id":"d_route","name":"Route and Service","kind":"infra","sub":"TLS edge, ClusterIP","desc":"Terminates TLS and balances traffic across replicas.","icon":""}]}]},{"id":"g_outside","name":"Everything the application talks to","kind":"group","sub":"","desc":"","icon":"","cols":2,"children":[{"id":"d_pg","name":"Onboarding database","kind":"store","sub":"Azure Database for PostgreSQL 16","desc":"Requests, immutable audit log, delivery jobs, pack registry. Managed service, private endpoint.","icon":""},{"id":"g_identity","name":"Identity and secrets","kind":"group","sub":"","desc":"","icon":"","cols":1,"children":[{"id":"d_sso","name":"Single sign-on","kind":"external","sub":"OIDC","desc":"","icon":""},{"id":"d_vault","name":"CyberArk Conjur","kind":"external","sub":"Credential vault","desc":"Holds every credential, with rotation and audit.","icon":""}]},{"id":"g_targets","name":"Provisioning targets","kind":"group","sub":"","desc":"","icon":"","cols":1,"children":[{"id":"d_cribl","name":"Cribl Stream","kind":"external","sub":"REST :9000","desc":"Routes, destinations, packs. 48 worker groups across 4 regions x 3 environments x 4 types.","icon":""},{"id":"d_elk","name":"ELK Stack","kind":"external","sub":"REST :9200","desc":"Roles, mappings, ILM, Logstash pipelines, Kibana dashboards.","icon":""},{"id":"d_blob","name":"Azure Blob Storage","kind":"external","sub":"Archive","desc":"Manually created containers. Verified, never auto-created. 90-day retention.","icon":""}]},{"id":"d_etn_portal","name":"ETN Admin Portal","kind":"external","sub":"Hosted externally","desc":"External portal integration for routing configuration.","icon":""}]}]}},{"key":"data","level":"5","title":"Data model and CLI tools","sub":"PostgreSQL schema, pack registry, and the two operationally live CLI scripts.","notes":["Four database tables: onboarding_requests, audit_logs, delivery_jobs, pack_registry.","Pack registry maps data_type to pack_id + pack_version. Only status='approved' packs are ever referenced.","cribl-pusher.py and role_rm.py are used in production today. All existing flags must keep working."],"root":{"id":"root","name":"","kind":"group","sub":"","desc":"","icon":"","cols":3,"children":[{"id":"g_db","name":"PostgreSQL tables","kind":"group","sub":"Owned by etn_onboarding, managed via Alembic migrations","desc":"","icon":"","cols":1,"children":[{"id":"t_req","name":"onboarding_requests","kind":"store","sub":"Core request table","desc":"UUID PK, app_name, apm_id (unique), data_type, log_types (JSONB), regions, status enum, pack_id, pack_version, storage_container, entity_mapping (JSONB), form_data (JSONB).","icon":""},{"id":"t_audit","name":"audit_logs","kind":"store","sub":"Immutable trail","desc":"FK to request. Stage, action, actor, outcome, metadata (JSONB). Cascade delete with request.","icon":""},{"id":"t_jobs","name":"delivery_jobs","kind":"store","sub":"Job tracking","desc":"FK to request. Job type (cribl_edge, etn_portal, harness_blob), status (pending/running/success/failed), external_ref, result (JSONB).","icon":""},{"id":"t_packs","name":"pack_registry","kind":"store","sub":"Vetted packs","desc":"data_type (unique) \u2192 pack_id + pack_version. attachment (route|pipeline). status (approved|draft|deprecated). Only approved packs referenced.","icon":""}]},{"id":"g_cli","name":"CLI tools (operationally live)","kind":"group","sub":"Used in production today","desc":"","icon":"","cols":1,"children":[{"id":"cli_pusher","name":"cribl-pusher.py","kind":"capability","sub":"Bulk Cribl provisioning","desc":"Interactive workspace/worker-group selection. Single app or bulk file mode. Route insertion above first final:true. Destination upsert with region templates. Snapshots before every patch. Dry-run mode.","icon":""},{"id":"cli_roles","name":"role_rm.py","kind":"capability","sub":"ELK role generation and push","desc":"Jinja2 template rendering for roles and role-mappings. Cluster privilege generation. Push to nonprod first, then prod. Field security via apmId filter. Dry-run mode.","icon":""},{"id":"cli_validate","name":"_validate.py","kind":"capability","sub":"Data validation and audit","desc":"Validation and auditing tool for onboarding data integrity.","icon":""}]},{"id":"g_decisions","name":"Key decisions","kind":"group","sub":"Settled and non-negotiable","desc":"","icon":"","cols":1,"children":[{"id":"dec_blob","name":"Blob containers: manual","kind":"external","sub":"Non-negotiable","desc":"Created by hand, verified with write-delete probe. create_container option explicitly false on Cribl destinations.","icon":""},{"id":"dec_packs","name":"Packs replace pipelines","kind":"external","sub":"No pipeline generator","desc":"data_type maps to a pack in the registry. No transformation catalog, no user-authored JavaScript.","icon":""},{"id":"dec_indirect","name":"Indirect API calls only","kind":"external","sub":"Non-negotiable","desc":"etn_onboarding calls cribl_service and ece_service. Never Cribl or Elasticsearch directly.","icon":""},{"id":"dec_types","name":"data_type \u2260 log_type","kind":"external","sub":"Orthogonal concepts","desc":"data_type = what system produced the log (Mulesoft). log_type = business category (RIM, TRANS, BIZ, LGLHLD). Never merged.","icon":""},{"id":"dec_vetted","name":"Only vetted packs","kind":"external","sub":"Security gate","desc":"Packs can contain custom JavaScript. Unreviewed packs are never referenced. status='approved' required.","icon":""}]}]}}],"icons":{}};
+const SVGNS = "http://www.w3.org/2000/svg";
+const $ = i => document.getElementById(i);
+
+/* ---- accurate text measurement, so nothing ever overflows ---- */
+const mc = document.createElement("canvas").getContext("2d");
+function tw(t, px, weight) {
+  mc.font = `${weight||400} ${px}px Inter, "Segoe UI", Helvetica, Arial, sans-serif`;
+  return mc.measureText(t).width;
+}
+function wrap(t, px, weight, maxw) {
+  if (!t) return [];
+  const words = String(t).split(/\s+/); const out = []; let line = "";
+  for (const w of words) {
+    const cand = line ? line + " " + w : w;
+    if (tw(cand, px, weight) <= maxw || !line) line = cand;
+    else { out.push(line); line = w; }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/* ---- sizing ---- */
+const PAD = 20, GAP = 16, TILE_W = 232, ICON = 40;
+const F = { name: 14.5, sub: 11, desc: 11.5, gname: 14, gsub: 11 };
+const LH = { name: 19, sub: 15, desc: 16 };
+
+function measure(n) {
+  if (!n.children.length) {
+    const w = TILE_W, inner = w - 24;
+    let h = 14;
+    if (n.icon) h += ICON + 8;
+    h += wrap(n.name, F.name, 650, inner).length * LH.name;
+    if (n.sub) h += wrap(n.sub, F.sub, 400, inner).length * LH.sub;
+    if (n.desc) h += 5 + wrap(n.desc, F.desc, 400, inner).length * LH.desc;
+    n.w = w; n.h = Math.max(96, h + 14);
+    return;
+  }
+  n.children.forEach(measure);
+  const kids = n.children;
+  const cols = Math.min(kids.length,
+    n.cols || (kids.length === 1 ? 1 : kids.length <= 4 ? 2 : kids.length <= 9 ? 3 : 4));
+  const leaves = kids.filter(c => !c.children.length);
+  if (leaves.length) {
+    const lw = Math.max(...leaves.map(c => c.w));
+    leaves.forEach(c => { c.w = lw; });
+  }
+  const rows = [];
+  for (let i = 0; i < kids.length; i += cols) rows.push(kids.slice(i, i + cols));
+  rows.forEach(r => { const rh = Math.max(...r.map(c => c.h)); r.forEach(c => { if (!c.children.length) c.h = rh; }); });
+  const inner = Math.max(...rows.map(r => r.reduce((a, c) => a + c.w, 0) + (r.length - 1) * GAP));
+  n._rows = rows;
+  n.w = inner + 2 * PAD;
+  const iw = n.w - 2 * PAD;
+  let hdr = 12;
+  hdr += wrap(n.name, F.gname, 700, iw).length * 19;
+  if (n.sub) hdr += wrap(n.sub, F.gsub, 400, iw).length * 15;
+  if (n.desc) hdr += wrap(n.desc, F.desc, 400, iw).length * 16;
+  n._hdr = hdr + 14;
+  n.h = n._hdr + rows.reduce((a, r) => a + Math.max(...r.map(c => c.h)), 0)
+        + (rows.length - 1) * GAP + PAD;
+}
+function place(n, x, y) {
+  n.x = x; n.y = y;
+  if (!n.children.length) return;
+  let cy = y + n._hdr;
+  for (const r of n._rows) {
+    let cx = x + PAD;
+    const rh = Math.max(...r.map(c => c.h));
+    for (const c of r) { place(c, cx, cy); cx += c.w + GAP; }
+    cy += rh + GAP;
+  }
+}
+
+/* ---- palette: light tiles, coloured frames ---- */
+const C = {
+  platform:  { frame:"#0F6CBD", tint:"#EAF3FB", tile:"#FFFFFF", txt:"#0B4F8A" },
+  capability:{ frame:"#0F6CBD", tint:"#FFFFFF", tile:"#FFFFFF", txt:"#16232F" },
+  part:      { frame:"#7FA9CE", tint:"#FFFFFF", tile:"#FFFFFF", txt:"#16232F" },
+  store:     { frame:"#B5539C", tint:"#FCF1F8", tile:"#FFFFFF", txt:"#8C3B77" },
+  person:    { frame:"#16232F", tint:"#F3F5F7", tile:"#FFFFFF", txt:"#16232F" },
+  external:  { frame:"#5F7183", tint:"#F6F8FA", tile:"#FFFFFF", txt:"#3E4E5E" },
+  infra:     { frame:"#8B9AA8", tint:"#F7F9FB", tile:"#FFFFFF", txt:"#3E4E5E" },
+  group:     { frame:"#C3CFDA", tint:"transparent", tile:"#FFFFFF", txt:"#41556A" },
+  groupdark: { frame:"#C3CFDA", tint:"transparent", tile:"#FFFFFF", txt:"#41556A" },
+  accent:    { frame:"#D9730D", tint:"#FDF3E7", tile:"#FFFFFF", txt:"#8A4A05" },
+};
+
+let cur = 0, vb = null;
+
+function el(t, a, p) {
+  const n = document.createElementNS(SVGNS, t);
+  for (const k in a) n.setAttribute(k, a[k]);
+  if (p) p.appendChild(n);
+  return n;
+}
+function txt(p, s, x, y, px, weight, fill, anchor) {
+  const t = el("text", { x, y, "font-size": px, "font-weight": weight || 400,
+    fill, "font-family": "var(--sans)", "text-anchor": anchor || "start" }, p);
+  t.textContent = s;
+  return t;
+}
+
+function draw(n, g) {
+  const c = C[n.kind] || C.group;
+  const grp = n.children.length > 0;
+  const gg = el("g", { class: grp ? "grp" : "tile" }, g);
+
+  el("rect", { class: "bd", x: n.x, y: n.y, width: n.w, height: n.h,
+    rx: grp ? 10 : 8, fill: grp ? c.tint : c.tile,
+    stroke: c.frame, "stroke-width": grp ? 1.6 : 1.2,
+    "stroke-dasharray": (n.kind === "group" || n.kind === "groupdark") ? "7 6" : "none" }, gg);
+
+  if (grp) {
+    // accent stripe so nested frames stay distinguishable
+    if (n.kind !== "group" && n.kind !== "groupdark")
+      el("rect", { x: n.x, y: n.y, width: 4, height: n.h, rx: 2, fill: c.frame }, gg);
+    let ty = n.y + 26;
+    const iw = n.w - 2 * PAD;
+    for (const ln of wrap(n.name, F.gname, 700, iw)) {
+      txt(gg, ln, n.x + PAD, ty, F.gname, 700, c.txt); ty += 19;
+    }
+    for (const ln of wrap(n.sub, F.gsub, 400, iw)) {
+      txt(gg, ln, n.x + PAD, ty, F.gsub, 400, "#6B7E92"); ty += 15;
+    }
+    for (const ln of wrap(n.desc, F.desc, 400, iw)) {
+      txt(gg, ln, n.x + PAD, ty, F.desc, 400, "#6B7E92"); ty += 16;
+    }
+    n.children.forEach(k => draw(k, g));
+    return;
+  }
+
+  const cx = n.x + n.w / 2, iw = n.w - 24;
+  let ty = n.y + 16;
+  if (n.icon && D.icons[n.icon]) {
+    el("image", { href: D.icons[n.icon], x: cx - ICON / 2, y: ty,
+      width: ICON, height: ICON }, gg);
+    ty += ICON + 8;
+  }
+  ty += 4;
+  for (const ln of wrap(n.name, F.name, 650, iw)) {
+    txt(gg, ln, cx, ty + 8, F.name, 650, c.txt, "middle"); ty += LH.name;
+  }
+  for (const ln of wrap(n.sub, F.sub, 400, iw)) {
+    txt(gg, ln, cx, ty + 6, F.sub, 400, "#7C8DA0", "middle"); ty += LH.sub;
+  }
+  if (n.desc) { ty += 4;
+    for (const ln of wrap(n.desc, F.desc, 400, iw)) {
+      txt(gg, ln, cx, ty + 6, F.desc, 400, "#5C6E80", "middle"); ty += LH.desc;
+    }
+  }
+}
+
+function render(i) {
+  cur = i;
+  const p = D.pages[i];
+  measure(p.root); place(p.root, 0, 0);
+  const svg = $("cv");
+  svg.innerHTML = "";
+  const m = 26;
+  vb = { x: -m, y: -m, w: p.root.w + 2 * m, h: p.root.h + 2 * m };
+  svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  const g = el("g", {}, svg);
+  draw(p.root, g);
+
+  $("ttl").textContent = p.title;
+  $("sub").textContent = p.sub;
+  $("foot").innerHTML = p.notes.map(n => `<div>${n}</div>`).join("");
+  rail();
+}
+
+function rail() {
+  const box = $("pages"); box.innerHTML = "";
+  D.pages.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.className = "pg";
+    b.setAttribute("aria-current", i === cur ? "true" : "false");
+    b.innerHTML = `<span class="n">${p.level}</span>
+      <span><span class="t">${p.title}</span></span>`;
+    b.onclick = () => render(i);
+    box.appendChild(b);
+  });
+}
+
+(function () {
+  const svg = $("cv"); let drag = null;
+  svg.addEventListener("wheel", e => {
+    e.preventDefault();
+    const k = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    vb = { x: vb.x + (vb.w - vb.w * k) * px, y: vb.y + (vb.h - vb.h * k) * py,
+           w: vb.w * k, h: vb.h * k };
+    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  }, { passive: false });
+  svg.addEventListener("pointerdown", e => {
+    drag = { x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y };
+    svg.classList.add("drag"); svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const r = svg.getBoundingClientRect();
+    vb.x = drag.vx - (e.clientX - drag.x) * (vb.w / r.width);
+    vb.y = drag.vy - (e.clientY - drag.y) * (vb.h / r.height);
+    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  });
+  ["pointerup", "pointercancel"].forEach(t =>
+    svg.addEventListener(t, () => { drag = null; svg.classList.remove("drag"); }));
+})();
+
+$("fit").onclick = () => render(cur);
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowRight") render(Math.min(D.pages.length - 1, cur + 1));
+  if (e.key === "ArrowUp" || e.key === "ArrowLeft") render(Math.max(0, cur - 1));
+});
+
+document.fonts && document.fonts.ready.then(() => render(0));
+render(0);
+</script>
+</body>
+</html>

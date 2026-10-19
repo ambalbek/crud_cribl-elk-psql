@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Application Onboarding — Architecture</title>
+<style>
+  :root{
+    --bg:#FFFFFF; --canvas:#F7F9FC; --rail:#0E1B2A; --rail2:#182B41;
+    --ink:#16232F; --dim:#64768A; --line:#DCE4EC;
+    --azure:#0F6CBD; --deep:#0B4F8A; --grey:#5F7183; --sec:#7A3E9D;
+    --data:#B5539C; --build:#D9730D; --gold:#F5A800;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+       display:grid;grid-template-columns:250px 1fr;overflow:hidden}
+
+  aside{background:var(--rail);color:#E8EFF6;display:flex;flex-direction:column;min-height:0}
+  .brand{padding:20px 18px 16px;border-bottom:1px solid #22364C}
+  .brand h1{margin:0;font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+  .brand p{margin:5px 0 0;font-size:11px;color:#93A9BF;line-height:1.45}
+  .eyebrow{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
+           text-transform:uppercase;color:#7C93AB;padding:16px 18px 8px}
+  .pages{padding:0 10px}
+  .pg{display:grid;grid-template-columns:24px 1fr;gap:10px;width:100%;align-items:center;
+      text-align:left;background:none;border:0;color:inherit;cursor:pointer;
+      padding:10px 8px;border-radius:7px;font:inherit}
+  .pg:hover{background:var(--rail2)}
+  .pg[aria-current="true"]{background:var(--rail2)}
+  .pg .n{font-family:var(--mono);font-size:10.5px;color:#7C93AB;
+         border:1px solid #2C4460;border-radius:5px;text-align:center;line-height:19px;height:21px}
+  .pg[aria-current="true"] .n{background:var(--gold);border-color:var(--gold);color:#0E1B2A;font-weight:700}
+  .pg .t{font-size:12.5px;font-weight:560}
+  .pg:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .railnote{margin-top:auto;padding:14px 18px 18px;font-size:10.5px;
+            color:#7C93AB;line-height:1.5;border-top:1px solid #22364C}
+
+  main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  header{padding:16px 22px 12px;border-bottom:1px solid var(--line);display:flex;gap:20px;align-items:flex-start}
+  header .h{flex:1;min-width:0}
+  header h2{margin:0;font-size:20px;font-weight:660;letter-spacing:-.015em}
+  header p{margin:5px 0 0;font-size:12px;color:var(--dim)}
+  .tools{display:flex;gap:7px}
+  .tool{font:inherit;font-size:11.5px;background:#fff;border:1px solid var(--line);
+        border-radius:6px;padding:6px 10px;cursor:pointer;color:var(--ink)}
+  .tool:hover{background:#F2F6FA}
+  .tool:focus-visible{outline:2px solid var(--azure)}
+
+  .stage{position:relative;flex:1;min-height:0;background:var(--canvas);
+         background-image:radial-gradient(#E2E9F0 1px,transparent 1px);
+         background-size:22px 22px}
+  svg{width:100%;height:100%;display:block;cursor:grab}
+  svg.drag{cursor:grabbing}
+  .foot{position:absolute;left:0;right:0;bottom:0;padding:10px 22px;
+        background:linear-gradient(transparent,rgba(247,249,252,.96) 40%);
+        font-size:11.5px;color:var(--dim);line-height:1.55;pointer-events:none}
+
+  .tile{cursor:default}
+  .tile rect.bd{transition:filter .14s ease}
+  .tile:hover rect.bd{filter:drop-shadow(0 2px 6px rgba(15,60,110,.18))}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media (max-width:880px){body{grid-template-columns:1fr}aside{display:none}}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">
+    <h1>Application Onboarding</h1>
+    <p>Architecture, from the whole picture down to the estate.</p>
+  </div>
+  <div class="eyebrow">Pages</div>
+  <div class="pages" id="pages"></div>
+  <div class="railnote">Boxes contain what runs inside them. Drag to pan, scroll to zoom.</div>
+</aside>
+
+<main>
+  <header>
+    <div class="h">
+      <h2 id="ttl"></h2>
+      <p id="sub"></p>
+    </div>
+    <div class="tools"><button class="tool" id="fit">Fit</button></div>
+  </header>
+  <div class="stage">
+    <svg id="cv" role="img" aria-label="Architecture diagram"></svg>
+    <div class="foot" id="foot"></div>
+  </div>
+</main>
+
+<script>
+const D = 
