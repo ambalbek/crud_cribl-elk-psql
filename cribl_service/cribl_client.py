@@ -44,7 +44,12 @@ def _raise_for(r: httpx.Response, context: str = "") -> Any:
             status_code=r.status_code,
             detail=f"{label}{r.text[:400]}",
         )
-    return r.json() if r.content else {}
+    if not r.content:
+        return {}
+    try:
+        return r.json()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=502, detail=f"Invalid JSON from Cribl API: {r.text[:200]}")
 
 
 def _snapshot_dir(table: str) -> Path:
@@ -268,14 +273,18 @@ class AsyncCriblClient:
                 ),
             )
 
-        # Find insert position (above first final:true route)
+        # Find insert position (above first final:true route, or above
+        # last default-like catch-all route if no final:true exists)
         insert_at = len(target_routes)
         for i, r in enumerate(target_routes):
             if isinstance(r, dict) and r.get("final") is True:
                 insert_at = i
                 break
         else:
-            for i, r in enumerate(target_routes):
+            # No final:true found — insert above the LAST default-like route
+            # so new routes always sit above the catch-all.
+            for i in range(len(target_routes) - 1, -1, -1):
+                r = target_routes[i]
                 if not isinstance(r, dict):
                     continue
                 rid = str(r.get("id", "") or r.get("name", "")).lower()

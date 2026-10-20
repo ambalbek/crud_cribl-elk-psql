@@ -1,0 +1,102 @@
+# ── ARO Nonprod Environment Values Override ─────────────────────────────────
+# Usage:
+#   helm upgrade --install cribl ./helm/cribl-framework \
+#     -f helm/cribl-framework/values-aro-nonprod.yaml \
+#     -n appXXXXXXXX-cribl-elk-psql-nonprod
+#
+# Replace all <placeholders> before deploying.
+
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - name: nexus-pull-secret
+  logLevel: INFO
+  logFormat: json
+  otlpEndpoint: ""
+  # OpenShift restricted SCC assigns UIDs — set these to null
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: null
+    runAsGroup: null
+    fsGroup: null
+    seccompProfile:
+      type: RuntimeDefault
+
+# ── Images (Nexus) ───────────────────────────────────────────────────────────
+framework:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/cribl-framework
+    tag: "<version>"
+  secretKey: "<generate-random-32-char-string>"
+  adminUsername: "<admin-username>"
+  adminPassword: "<admin-password>"
+  etnOnboardingToken: "<generate-random-32-char-string>"
+  route:
+    enabled: true
+    host: ""
+    tlsTermination: edge
+  ingress:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 2Gi
+
+criblService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/cribl-service
+    tag: "<version>"
+  persistence:
+    enabled: true
+    size: 1Gi
+
+eceService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/ece-service
+    tag: "<version>"
+
+etnOnboarding:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: <nexus-host>:<port>/etn-onboarding
+    tag: "<version>"
+  secretKey: "<generate-random-32-char-string>"
+  migrationJob:
+    enabled: true
+
+# ── External Services ────────────────────────────────────────────────────────
+external:
+  cribl:
+    baseUrl: "<cribl-stream-url>:9000"
+    username: "<cribl-username>"
+    password: "<cribl-password>"
+    skipSsl: "false"
+
+  elasticsearch:
+    datastreamUrl: "<elasticsearch-url>:9200"
+    datastreamUsername: "<es-username>"
+    datastreamPassword: "<es-password>"
+
+  entEsClusters: ""   # JSON array, e.g. '[{"url":"https://...","token":"..."}]'
+
+  ece:
+    esUrl: "<es-nonprod-url>"
+    esUsername: "<es-nonprod-user>"
+    esPassword: "<es-nonprod-pass>"
+    esUrlProd: "<es-prod-url>"
+    esUsernameProd: "<es-prod-user>"
+    esPasswordProd: "<es-prod-pass>"
+    skipSsl: "false"
+
+  postgres:
+    frameworkDatabaseUrl: "postgresql://<user>:<pass>@<pg-host>:5432/cribl_framework"
+    etnDatabaseUrl: "postgresql://<user>:<pass>@<pg-host>:5432/etn_onboarding"
+
+networkPolicy:
+  enabled: true

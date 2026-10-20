@@ -82,6 +82,11 @@ external:
     elkKibanaUrl: ""
     elkLogstashUrl: ""
 
+  # Entitlement cluster config — JSON array of cluster objects. The portal reads
+  # ENT_ES_CLUSTERS for the /cribl/api/entitlement endpoints. Empty = fall back
+  # to config.json entitlement.clusters.
+  entEsClusters: ""
+
   # ece_service targets — role provisioning pushes to BOTH nonprod and prod.
   ece:
     esUrl: "" # nonprod
@@ -123,6 +128,9 @@ framework:
     port: 5000
   # Flask session signing key (SECRET_KEY env; config.json secret_key wins if set there).
   secretKey: "change-me-in-production"
+  # Admin credentials for local auth fallback (ADMIN_USERNAME / ADMIN_PASSWORD env).
+  adminUsername: ""
+  adminPassword: ""
   # Must match the token inside etnOnboarding AUTH_LOCAL_USERS (kept in sync
   # automatically unless etnOnboarding.authLocalUsers is overridden).
   etnOnboardingToken: "change-me-in-production"

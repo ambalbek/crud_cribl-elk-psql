@@ -131,20 +131,11 @@
   </style>
 </head>
 <body>
+<div class="cf-app">
+{% set nav_active = 'pusher' %}
+{% include 'partials/sidebar.html' %}
+<div class="cf-main">
 
-<header>
-  <div class="logo">
-    <div class="logo-icon">📡</div>
-    Cribl Pusher
-    <span class="badge badge-internal">Internal</span>
-  </div>
-  <a class="back-btn" href="{{ url_for('entitlements_page') }}">Entitlements</a>
-  <a class="back-btn" href="{{ url_for('landing') }}">&#8592; Back to Framework</a>
-  {% if current_user %}
-  <span style="color:var(--muted);font-size:.84rem;margin-left:auto;">{{ current_display_name }}</span>
-  <a class="back-btn" href="{{ url_for('logout') }}" style="color:var(--accent);">Logout</a>
-  {% endif %}
-</header>
 
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab(event,'tab1')">📡 Cribl Pusher</button>
@@ -166,12 +157,20 @@
       <div class="panel">
         <p class="panel-title">Workspace</p>
 
-        {% set cribl_urls = config.get('cribl_urls', []) %}
+        {% set cribl_nodes = {} %}
+        {% if config.get('base_url') %}
+          {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
+        {% endif %}
+        {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
+          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
+            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
         <div class="form-group">
           <label for="t1_cribl_url">Cribl URL <span style="font-weight:400">(optional — overrides config.json)</span></label>
-          {% if cribl_urls %}
+          {% if cribl_nodes %}
             <select id="t1_cribl_url">
-              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in cribl_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t1_cribl_url" placeholder="leave blank to use config.json">
@@ -438,12 +437,24 @@
       <div class="panel">
         <p class="panel-title">ELK Connection — Nonprod</p>
 
-        {% set elk_urls_nonprod = config.get('elk_urls_nonprod', config.get('elk_urls', [])) %}
+        {% set elk_nodes = {} %}
+        {% for cl in config.get('entitlement', {}).get('clusters', []) %}
+          {% if cl.get('url') and cl.get('url') not in elk_nodes %}
+            {% if elk_nodes.update({cl.get('url'): cl.get('name', 'cluster')}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
+        {% set ece = config.get('ece', {}) %}
+        {% if ece.get('es_url') and ece.get('es_url') not in elk_nodes %}
+          {% if elk_nodes.update({ece.get('es_url'): 'nonprod'}) %}{% endif %}
+        {% endif %}
+        {% if ece.get('es_url_prod') and ece.get('es_url_prod') not in elk_nodes %}
+          {% if elk_nodes.update({ece.get('es_url_prod'): 'prod'}) %}{% endif %}
+        {% endif %}
         <div class="form-group">
           <label for="t2_elk_url_nonprod">ELK Nonprod URL</label>
-          {% if elk_urls_nonprod %}
+          {% if elk_nodes %}
             <select id="t2_elk_url_nonprod">
-              {% for u in elk_urls_nonprod %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in elk_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t2_elk_url_nonprod" placeholder="https://elk-nonprod.example.com">
@@ -470,12 +481,11 @@
       <div class="panel">
         <p class="panel-title">ELK Connection — Prod</p>
 
-        {% set elk_urls_prod = config.get('elk_urls_prod', config.get('elk_urls', [])) %}
         <div class="form-group">
           <label for="t2_elk_url_prod">ELK Prod URL</label>
-          {% if elk_urls_prod %}
+          {% if elk_nodes %}
             <select id="t2_elk_url_prod">
-              {% for u in elk_urls_prod %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in elk_nodes.items() %}<option value="{{ url }}"{% if 'prod' in label.lower() %} selected{% endif %}>{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t2_elk_url_prod" placeholder="https://elk-prod.example.com">
@@ -521,12 +531,20 @@
       <div class="panel">
         <p class="panel-title">Cribl Workspace</p>
 
-        {% set cribl_urls = config.get('cribl_urls', []) %}
+        {% set cribl_nodes = {} %}
+        {% if config.get('base_url') %}
+          {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
+        {% endif %}
+        {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
+          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
+            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
         <div class="form-group">
           <label for="t2_cribl_url">Cribl URL <span style="font-weight:400">(optional)</span></label>
-          {% if cribl_urls %}
+          {% if cribl_nodes %}
             <select id="t2_cribl_url">
-              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              {% for url, label in cribl_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t2_cribl_url" placeholder="https://cribl.example.com:9000">
@@ -665,13 +683,21 @@
       <div class="panel">
         <p class="panel-title">Workspace</p>
 
-        {% set cribl_urls = config.get('cribl_urls', []) %}
+        {% set cribl_nodes = {} %}
+        {% if config.get('base_url') %}
+          {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
+        {% endif %}
+        {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
+          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
+            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% endif %}
+        {% endfor %}
         <div class="form-group">
           <label for="t3_cribl_url">Cribl URL <span style="font-weight:400">(leave default to route via cribl_service)</span></label>
-          {% if cribl_urls %}
+          {% if cribl_nodes %}
             <select id="t3_cribl_url">
               <option value="">— via cribl_service (default) —</option>
-              {% for u in cribl_urls %}<option value="{{ u }}">{{ u }} (direct)</option>{% endfor %}
+              {% for url, label in cribl_nodes.items() %}<option value="{{ url }}">{{ label }} ({{ url }})</option>{% endfor %}
             </select>
           {% else %}
             <input type="text" id="t3_cribl_url" placeholder="leave blank to route via cribl_service">
@@ -1023,7 +1049,7 @@ function renderStatus(elId, returncode) {
 // ── Helper: render validation errors ─────────────────────────────────────
 function renderErrors(elId, errors) {
   const el = document.getElementById(elId);
-  el.innerHTML = errors.map(e => `<div class="alert alert-error">❌ ${e}</div>`).join('');
+  el.innerHTML = errors.map(e => `<div class="alert alert-error">${esc(e)}</div>`).join('');
 }
 
 // ── Helper: escape HTML ───────────────────────────────────────────────────
@@ -1095,7 +1121,19 @@ async function submitPusher() {
         ).join('');
       }
       outputEl.textContent = data.output || '(no output)';
+      /* If cribl_service returned a 401 (missing credentials), auto-expand
+         the Credentials Override section and show a helpful message. */
+      if (data.results && data.results.some(r =>
+            r.status === 401 || (r.result && r.result.detail && r.result.detail.includes('credentials')))) {
+        const details = document.querySelector('#tab1 details');
+        if (details) details.open = true;
+        statusEl.innerHTML = '<div class="alert alert-error">Cribl credentials are required. '
+          + 'Enter a Bearer Token or Username / Password in the Credentials Override section below and retry.</div>';
+      }
       renderStatus('t1_status', data.returncode);
+      if (data.returncode === 0 && !data.portal_update && !document.getElementById('t1_request_id').value.trim()) {
+        statusEl.innerHTML += '<div class="alert alert-warning">Provision succeeded but portal status was not updated — enter a Request ID above to auto-update status on success.</div>';
+      }
       if (data.portal_update) {
         const pu = data.portal_update;
         if (pu.ok) {
@@ -1534,6 +1572,64 @@ function filterTable() {
 onWorkspaceChange('t1');
 onWorkspaceChange('t2');
 onWorkspaceChange('t3');
+
+// ── Prefill from query params (e.g. redirected from catalog) ─────────────
+(function prefillFromQuery() {
+  const p = new URLSearchParams(window.location.search);
+  if (!p.has('apmid') && !p.has('appname')) return;
+
+  const targetTab = p.get('tab') || 'tab1';
+  const prefix = targetTab === 'tab2' ? 't2' : 't1';
+
+  // Activate the correct tab
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabIdx = targetTab === 'tab2' ? 1 : 0;
+  if (tabBtns[tabIdx]) tabBtns[tabIdx].classList.add('active');
+  const tabContent = document.getElementById(targetTab);
+  if (tabContent) tabContent.classList.add('active');
+
+  // Set APMID and Appname (field IDs differ between tabs)
+  const apmidField = prefix === 't2' ? 't2_apmid' : 't1_appid';
+  const appnameField = prefix === 't2' ? 't2_app_name' : 't1_appname';
+  const apmidEl = document.getElementById(apmidField);
+  const appnameEl = document.getElementById(appnameField);
+  if (apmidEl   && p.get('apmid'))   apmidEl.value   = p.get('apmid');
+  if (appnameEl && p.get('appname')) appnameEl.value = p.get('appname');
+
+  // Set region radio
+  const region = p.get('region');
+  if (region) {
+    const radio = document.querySelector('input[name="' + prefix + '_region"][value="' + region + '"]');
+    if (radio) radio.checked = true;
+  }
+
+  // Set workspace and trigger worker group refresh
+  const workspace = p.get('workspace');
+  if (workspace) {
+    const wsSel = document.getElementById(prefix + '_workspace');
+    if (wsSel) {
+      for (const opt of wsSel.options) {
+        if (opt.value === workspace) { wsSel.value = workspace; break; }
+      }
+      onWorkspaceChange(prefix);
+    }
+  }
+
+  // Set request ID
+  const reqId = p.get('req_id');
+  if (reqId) {
+    const reqEl = document.getElementById(prefix + '_request_id');
+    if (reqEl) reqEl.value = reqId;
+  }
+
+  // Clean URL without reloading
+  window.history.replaceState({}, '', window.location.pathname);
+})();
 </script>
+
+</div><!-- /cf-main -->
+</div><!-- /cf-app -->
 </body>
 </html>

@@ -205,6 +205,10 @@ class ECEClient:
         call = self._es_prod if target == "prod" else self._es
         return call("PUT", f"/_index_template/{name}", json=body)
 
+    def delete_index_template(self, name: str, target: str = "nonprod") -> dict[str, Any]:
+        call = self._es_prod if target == "prod" else self._es
+        return call("DELETE", f"/_index_template/{name}")
+
     # ── Logstash Pipelines (stored in ES) ─────────────────────────────────────
 
     def list_logstash_pipelines(self, target: str = "nonprod") -> dict[str, Any]:

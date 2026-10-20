@@ -58,7 +58,8 @@ def submit_request():
         "region", "data_type",
         "log_destinations", "log_types", "ilm_tier", "entitlement_groups",
     }
-    # elk_capacity is intentionally stored in form_data (not a dedicated column)
+    elk_capacity = body.get("elk_capacity")
+    known_keys.add("elk_capacity")
     form_data = {k: v for k, v in body.items() if k not in known_keys}
 
     # Resolve pack from registry and pin at intake time
@@ -81,6 +82,7 @@ def submit_request():
         log_types=body.get("log_types", []),
         ilm_tier=body.get("ilm_tier", "none"),
         entitlement_groups=body.get("entitlement_groups", []),
+        elk_capacity=elk_capacity,
         pack_id=pack_ref.pack_id,
         pack_version=pack_ref.pack_version,
         status=RequestStatus.intake_pending,

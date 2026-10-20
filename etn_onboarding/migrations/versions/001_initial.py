@@ -25,18 +25,18 @@ def upgrade() -> None:
         sa.Column("requestor_name", sa.String(256), nullable=False),
         sa.Column("requestor_email", sa.String(320), nullable=False),
         sa.Column("team", sa.String(256), nullable=False),
-        sa.Column(
-            "environment",
-            sa.Enum("dev", "test", "stage", "prod", name="environment_enum"),
-            nullable=False,
-        ),
+        sa.Column("environment", JSONB, nullable=False, server_default="[]"),
         sa.Column(
             "status",
             sa.Enum(
                 "intake_pending", "intake_validated", "engagement", "solutioning",
+                "storage_pending", "storage_confirmed",
+                "delivery_destination", "delivery_pack", "delivery_route",
                 "delivery_collection", "delivery_routing", "delivery_storage",
-                "delivery_complete", "validation", "complete", "cancelled",
+                "delivery_complete", "delivery_failed",
+                "validation", "reverify", "complete", "cancelled",
                 name="request_status_enum",
+                create_type=False,
             ),
             nullable=False,
             server_default="intake_pending",
@@ -73,8 +73,11 @@ def upgrade() -> None:
             "stage",
             sa.Enum(
                 "intake_pending", "intake_validated", "engagement", "solutioning",
+                "storage_pending", "storage_confirmed",
+                "delivery_destination", "delivery_pack", "delivery_route",
                 "delivery_collection", "delivery_routing", "delivery_storage",
-                "delivery_complete", "validation", "complete", "cancelled",
+                "delivery_complete", "delivery_failed",
+                "validation", "reverify", "complete", "cancelled",
                 name="request_status_enum", create_type=False,
             ),
             nullable=False,
@@ -104,12 +107,14 @@ def upgrade() -> None:
         ),
         sa.Column(
             "job_type",
-            sa.Enum("cribl_edge", "etn_portal", "harness_blob", name="job_type_enum"),
+            sa.Enum("cribl_edge", "etn_portal", "harness_blob",
+                    name="job_type_enum", create_type=False),
             nullable=False,
         ),
         sa.Column(
             "status",
-            sa.Enum("pending", "running", "success", "failed", name="job_status_enum"),
+            sa.Enum("pending", "running", "success", "failed",
+                    name="job_status_enum", create_type=False),
             nullable=False,
             server_default="pending",
         ),
@@ -128,4 +133,3 @@ def downgrade() -> None:
     sa.Enum(name="job_status_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="job_type_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="request_status_enum").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="environment_enum").drop(op.get_bind(), checkfirst=True)

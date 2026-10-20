@@ -55,12 +55,54 @@ def record_turnover(request_id):
     }), 200
 
 
+@validation_bp.route("/<uuid:request_id>/reverify", methods=["POST"])
+@require_role("platform_admin")
+def mark_reverify(request_id):
+    """Transition the request from validation to reverify.
+
+    After customer demo/validation pass, the platform team re-verifies the
+    full configuration before marking the request complete.  This is a human
+    gate — no automated checks run here.
+
+    Expects optional JSON body with:
+      - actor (str, optional)
+      - notes (str, optional)
+    """
+    onboarding_req = db.session.get(OnboardingRequest, request_id)
+    if not onboarding_req:
+        return jsonify({"error": "Request not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    actor = body.get("actor", "system")
+
+    try:
+        audit_entry = transition_request(
+            onboarding_req,
+            RequestStatus.reverify,
+            actor=actor,
+            action="mark_reverify",
+            metadata={"notes": body.get("notes", "")},
+        )
+        db.session.commit()
+    except InvalidTransitionError as exc:
+        return jsonify({"error": str(exc)}), 409
+
+    logger.info("Onboarding marked for reverify: request_id=%s actor=%s", request_id, actor)
+
+    return jsonify({
+        "id": str(onboarding_req.id),
+        "status": onboarding_req.status.value,
+        "audit_id": str(audit_entry.id),
+    }), 200
+
+
 @validation_bp.route("/<uuid:request_id>/complete", methods=["POST"])
 @require_role("platform_admin")
 def mark_complete(request_id):
-    """Mark the onboarding as complete after customer demo/validation.
+    """Mark the onboarding as complete after platform re-verification.
 
-    Transitions the request to the ``complete`` terminal state.
+    Transitions the request from ``reverify`` to the ``complete`` terminal
+    state.
 
     Expects optional JSON body with:
       - actor (str, optional)

@@ -34,6 +34,8 @@ def trigger_collection(request_id):
     body = request.get_json(silent=True) or {}
     actor = body.get("actor", "system")
 
+    previous_status = onboarding_req.status
+
     try:
         audit_entry = transition_request(
             onboarding_req,
@@ -67,6 +69,7 @@ def trigger_collection(request_id):
         job.status = "failed"
         job.result = {"error": str(exc)}
         job.completed_at = datetime.now(timezone.utc)
+        onboarding_req.status = previous_status
 
     db.session.commit()
 
@@ -91,6 +94,7 @@ def trigger_routing(request_id):
 
     body = request.get_json(silent=True) or {}
     actor = body.get("actor", "system")
+    previous_status = onboarding_req.status
 
     try:
         audit_entry = transition_request(
@@ -126,6 +130,7 @@ def trigger_routing(request_id):
         job.status = "failed"
         job.result = {"error": str(exc)}
         job.completed_at = datetime.now(timezone.utc)
+        onboarding_req.status = previous_status
 
     db.session.commit()
 

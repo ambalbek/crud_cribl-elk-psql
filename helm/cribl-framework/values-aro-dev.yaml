@@ -30,6 +30,8 @@ framework:
     repository: <nexus-host>:<port>/cribl-framework
     tag: latest
   secretKey: "<generate-random-32-char-string>"
+  adminUsername: "<admin-username>"
+  adminPassword: "<admin-password>"
   etnOnboardingToken: "<generate-random-32-char-string>"
   route:
     enabled: true
@@ -74,6 +76,8 @@ external:
     datastreamUrl: "<elasticsearch-url>:9200"
     datastreamUsername: "<es-username>"
     datastreamPassword: "<es-password>"
+
+  entEsClusters: ""   # JSON array, e.g. '[{"url":"https://...","token":"..."}]'
 
   ece:
     esUrl: "<es-nonprod-url>"

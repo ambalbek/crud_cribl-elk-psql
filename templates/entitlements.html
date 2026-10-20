@@ -369,24 +369,11 @@
   </style>
 </head>
 <body>
+<div class="cf-app">
+{% set nav_active = 'entitlements' %}
+{% include 'partials/sidebar.html' %}
+<div class="cf-main">
 
-<header>
-  <div class="logo-icon">&#128225;</div>
-  <span class="logo-text"><a href="/cribl/">Cribl Framework</a></span>
-  <span class="badge">Entitlements</span>
-  <div class="nav-links">
-    <a href="{{ url_for('portal_index') }}">Portal</a>
-    <a href="{{ url_for('catalog_page') }}">Service Catalog</a>
-    {% if current_role == 'admin' %}
-    <a href="{{ url_for('cribl_app_page') }}">Pusher</a>
-    <a href="{{ url_for('portal_admin_update_status') }}">Admin</a>
-    {% endif %}
-    {% if current_user %}
-    <span style="color:var(--muted);font-size:.84rem;">{{ current_display_name }}</span>
-    <a href="{{ url_for('logout') }}" style="border-color:var(--accent);color:var(--accent);">Logout</a>
-    {% endif %}
-  </div>
-</header>
 
 <main>
   <div id="alertError" class="alert-error" role="alert"></div>
@@ -832,5 +819,8 @@
   // Initial load
   fetchEntitlements();
 </script>
+
+</div><!-- /cf-main -->
+</div><!-- /cf-app -->
 </body>
 </html>

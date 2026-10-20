@@ -5,7 +5,7 @@
 # docker-compose sets:  build: { context: ., dockerfile: ece_service/Dockerfile }
 # Manual build example: docker build -f ece_service/Dockerfile -t ece-service .
 
-FROM python:3.13-slim
+FROM python:3.12
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -25,15 +25,17 @@ COPY cribl_api.py    ./cribl_api.py
 COPY cribl_config.py ./cribl_config.py
 COPY cribl_logger.py ./cribl_logger.py
 COPY cribl_utils.py  ./cribl_utils.py
-COPY otel_setup.py   ./otel_setup.py
+COPY otel_setup.py       ./otel_setup.py
+COPY config_resolver.py  ./config_resolver.py
 
 # ── Service application code ─────────────────────────────────────────────────
 COPY ece_service/ ./ece_service/
+
+RUN chmod +x /app/ece_service/entrypoint.sh
 
 EXPOSE 8002
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')" || exit 1
 
-# Module path: /app is WORKDIR and in sys.path, ece_service/ is a package
-CMD ["uvicorn", "ece_service.main:app", "--host", "0.0.0.0", "--port", "8002"]
+ENTRYPOINT ["/app/ece_service/entrypoint.sh"]

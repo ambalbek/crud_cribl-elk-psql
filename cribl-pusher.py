@@ -238,9 +238,10 @@ def main():
         rp = session.post(url, headers=H(), json=payload, timeout=60,
                           allow_redirects=False)
         if rp.is_redirect or rp.status_code in (301, 302, 307, 308):
-            log.warning(f"[REDIRECT] POST {url} -> {rp.status_code} Location: {rp.headers.get('Location')}")
+            redirect_url = rp.headers.get("Location", url)
+            log.warning(f"[REDIRECT] POST {url} -> {rp.status_code} Location: {redirect_url}")
             # Follow the redirect manually so the caller still gets a final response
-            return session.post(url, headers=H(), json=payload, timeout=60)
+            return session.post(redirect_url, headers=H(), json=payload, timeout=60)
         return rp
 
     def PATCH(url, payload):

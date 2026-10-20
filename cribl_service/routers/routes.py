@@ -37,7 +37,7 @@ def patch_routes(
     return client.patch_routes(worker_group, table, payload)
 
 
-@router.post("/route")
+@router.post("/route", status_code=201)
 def add_route(
     worker_group: str,
     table: str,

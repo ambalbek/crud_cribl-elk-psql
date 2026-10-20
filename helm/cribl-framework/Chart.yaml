@@ -6,7 +6,7 @@ description: >-
   Kibana (ELK), and PostgreSQL are NOT deployed by this chart; point it at
   external instances via the `external` values section.
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "1.0.0"
 kubeVersion: ">=1.25.0-0"
 maintainers:
