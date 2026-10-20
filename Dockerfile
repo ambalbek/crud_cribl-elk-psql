@@ -15,15 +15,18 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY *.py ./
 COPY *.json ./
 COPY templates/ templates/
+COPY entrypoint.sh ./
 
 # config.json is NOT baked in (excluded via .dockerignore).
 # In K8s: mount via ConfigMap (cribl-config) at /app/config.json
 # Locally: -v ./config.json:/app/config.json:ro
-# Secrets are injected via env vars (see deployment.yml).
+# In prod: set APP_CONFIG_JSON env var (from CyberArk Conjur) — entrypoint writes it to /app/config.json
+
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/cribl/health')" || exit 1
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
+ENTRYPOINT ["/app/entrypoint.sh"]

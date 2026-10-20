@@ -31,10 +31,11 @@ COPY config_resolver.py  ./config_resolver.py
 # ── Service application code ─────────────────────────────────────────────────
 COPY ece_service/ ./ece_service/
 
+RUN chmod +x /app/ece_service/entrypoint.sh
+
 EXPOSE 8002
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')" || exit 1
 
-# Module path: /app is WORKDIR and in sys.path, ece_service/ is a package
-CMD ["uvicorn", "ece_service.main:app", "--host", "0.0.0.0", "--port", "8002"]
+ENTRYPOINT ["/app/ece_service/entrypoint.sh"]

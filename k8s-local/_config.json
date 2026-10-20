@@ -88,6 +88,10 @@
   },
 
   "etn_onboarding": {
-    "auth_backend": "local"
+    "auth_backend": "local",
+    "token": "local-token",
+    "auth_local_users": [
+      {"username": "portal", "token": "local-token", "roles": ["platform_admin"]}
+    ]
   }
 }

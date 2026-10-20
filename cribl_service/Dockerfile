@@ -29,10 +29,11 @@ COPY config_resolver.py  ./config_resolver.py
 # ── Service application code ─────────────────────────────────────────────────
 COPY cribl_service/ ./cribl_service/
 
+RUN chmod +x /app/cribl_service/entrypoint.sh
+
 EXPOSE 8001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
 
-# Module path: /app is WORKDIR and in sys.path, cribl_service/ is a package
-CMD ["uvicorn", "cribl_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+ENTRYPOINT ["/app/cribl_service/entrypoint.sh"]

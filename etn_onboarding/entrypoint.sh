@@ -3,6 +3,12 @@ set -e
 
 cd /app/etn_onboarding
 
+# If APP_CONFIG_JSON is set (e.g. from CyberArk Conjur), write it to config.json
+if [ -n "$APP_CONFIG_JSON" ]; then
+  echo "Writing config.json from APP_CONFIG_JSON env var..."
+  printf '%s\n' "$APP_CONFIG_JSON" > /app/config.json
+fi
+
 # If DATABASE_URL env var is not set, try to read it from config.json
 if [ -z "$DATABASE_URL" ] && [ -f /app/config.json ]; then
   DATABASE_URL=$(python -c "
