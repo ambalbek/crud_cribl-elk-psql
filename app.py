@@ -817,27 +817,31 @@ def _cribl_base_and_headers(
     username: str = "",
     password: str = "",
     skip_ssl: bool = False,
+    workspace_cfg: dict | None = None,
 ) -> tuple[str, dict]:
     """Return (base_url, headers) for Cribl API calls.
 
     Resolution order:
     1. Explicit cribl_url/token/user/pass passed from the form
     2. CRIBL_SERVICE_URL env var (internal microservice proxy)
-    3. config.json base_url + credentials (direct Cribl)
+    3. Workspace-level base_url + credentials (if workspace_cfg provided)
+    4. config.json base_url + credentials (direct Cribl)
 
     When using CRIBL_SERVICE_URL (2), callers should use cribl_service
     paths (e.g. /api/v1/m/{wg}/destinations/{id}).  When falling through
-    to direct Cribl (3), callers must use Cribl's native paths
+    to direct Cribl (3/4), callers must use Cribl's native paths
     (e.g. /api/v1/m/{wg}/system/outputs/{id}).
     Use ``_cribl_dest_path()`` helper to get the right path.
     """
     import base64
 
     config = load_config()
+    ws_creds = (workspace_cfg or {}).get("credentials", {})
 
     base_url = (
         cribl_url.rstrip("/")
         or CRIBL_SERVICE_URL
+        or (workspace_cfg or {}).get("base_url", "").rstrip("/")
         or (config.get("base_url") or "").rstrip("/")
     )
     if not base_url:
@@ -850,19 +854,26 @@ def _cribl_base_and_headers(
     # If using CRIBL_SERVICE_URL, forward creds as override headers so
     # cribl_service can authenticate to Cribl on behalf of the caller.
     if not cribl_url and CRIBL_SERVICE_URL:
-        if token:
-            headers["X-Cribl-Token"] = token
-        if username:
-            headers["X-Cribl-Username"] = username
-        if password:
-            headers["X-Cribl-Password"] = password
+        resolved_token = token or ws_creds.get("token", "")
+        resolved_user  = username or ws_creds.get("username", "")
+        resolved_pass  = password or ws_creds.get("password", "")
+        if resolved_token:
+            headers["X-Cribl-Token"] = resolved_token
+        if resolved_user:
+            headers["X-Cribl-Username"] = resolved_user
+        if resolved_pass:
+            headers["X-Cribl-Password"] = resolved_pass
+        # Forward workspace base_url so cribl_service targets the right cluster
+        ws_url = (workspace_cfg or {}).get("base_url", "")
+        if ws_url:
+            headers["X-Cribl-Url"] = ws_url
         return base_url, headers
 
-    # Resolve credentials: form overrides → env vars → config.json fallback
+    # Resolve credentials: form overrides → env vars → workspace creds → config.json fallback
     creds = config.get("credentials", {})
-    resolved_token = token or os.environ.get("CRIBL_TOKEN", "") or creds.get("token", "")
-    resolved_user  = username or os.environ.get("CRIBL_USERNAME", "") or creds.get("username", "")
-    resolved_pass  = password or os.environ.get("CRIBL_PASSWORD", "") or creds.get("password", "")
+    resolved_token = token or os.environ.get("CRIBL_TOKEN", "") or ws_creds.get("token", "") or creds.get("token", "")
+    resolved_user  = username or os.environ.get("CRIBL_USERNAME", "") or ws_creds.get("username", "") or creds.get("username", "")
+    resolved_pass  = password or os.environ.get("CRIBL_PASSWORD", "") or ws_creds.get("password", "") or creds.get("password", "")
 
     if resolved_token:
         headers["Authorization"] = f"Bearer {resolved_token}"
@@ -1703,10 +1714,13 @@ def cribl_app_page():
     except Exception as exc:
         log.error("Failed to load config.json: %s", exc)
         return f"Error loading config.json: {exc}", 500
-    workspaces = {
-        k: v for k, v in config.get("workspaces", {}).items()
-        if not k.startswith("_")
-    }
+    workspaces = {}
+    for k, v in config.get("workspaces", {}).items():
+        if k.startswith("_"):
+            continue
+        ws = dict(v)
+        ws.pop("credentials", None)  # never expose secrets in page source
+        workspaces[k] = ws
     return render_template("app.html", workspaces=workspaces, config=config)
 
 
@@ -1870,13 +1884,14 @@ def run_pusher():
         last_rc    = 0
         commands   = []
 
+        ws_creds_t1 = ws_cfg.get("credentials", {})
         creds = config.get("credentials", {})
         for wg in worker_groups:
             form_dict = form.to_dict()
             form_dict["worker_group"] = wg
-            form_dict.setdefault("token", form_dict.get("token") or creds.get("token", ""))
-            form_dict.setdefault("username", form_dict.get("username") or creds.get("username", ""))
-            form_dict.setdefault("password", form_dict.get("password") or creds.get("password", ""))
+            form_dict.setdefault("token", form_dict.get("token") or ws_creds_t1.get("token", "") or creds.get("token", ""))
+            form_dict.setdefault("username", form_dict.get("username") or ws_creds_t1.get("username", "") or creds.get("username", ""))
+            form_dict.setdefault("password", form_dict.get("password") or ws_creds_t1.get("password", "") or creds.get("password", ""))
             cmd, masked = build_pusher_cmd(form_dict, tmp_path or "")
             commands.append({"wg": wg, "cmd": masked})
             output, rc = run_subprocess(cmd, masked)
@@ -2259,17 +2274,24 @@ def run_role_rm():
             except Exception as exc:
                 return jsonify({"errors": [f"Cribl config error: {exc}"]}), 500
 
-            # Forward form credential overrides to cribl_service
+            # Forward credential overrides to cribl_service.
+            # Priority: form fields → workspace credentials → global credentials
+            ws_creds = ws_cfg.get("credentials", {})
+            creds_global = config.get("credentials", {})
             t2_cred_headers: dict[str, str] = {}
-            t2_cribl_token    = form.get("cribl_token", "").strip()
-            t2_cribl_username = form.get("cribl_username", "").strip()
-            t2_cribl_password = form.get("cribl_password", "").strip()
+            t2_cribl_token    = form.get("cribl_token", "").strip() or ws_creds.get("token", "") or creds_global.get("token", "")
+            t2_cribl_username = form.get("cribl_username", "").strip() or ws_creds.get("username", "") or creds_global.get("username", "")
+            t2_cribl_password = form.get("cribl_password", "").strip() or ws_creds.get("password", "") or creds_global.get("password", "")
             if t2_cribl_token:
                 t2_cred_headers["X-Cribl-Token"] = t2_cribl_token
             if t2_cribl_username:
                 t2_cred_headers["X-Cribl-Username"] = t2_cribl_username
             if t2_cribl_password:
                 t2_cred_headers["X-Cribl-Password"] = t2_cribl_password
+            # Forward workspace base_url so cribl_service targets the right cluster
+            ws_base = ws_cfg.get("base_url", "")
+            if ws_base:
+                t2_cred_headers["X-Cribl-Url"] = ws_base
 
             apps_payload = [{"apmid": apmid, "app_name": app_name} for apmid, app_name in bulk_apps]
             cribl_payload = {
@@ -2570,10 +2592,11 @@ def _build_catalog(config: dict) -> list:
         if not root_url:
             continue
 
-        skip_ssl = ws_cfg.get("skip_ssl", config.get("skip_ssl", False))
-        ws_token = (ws_cfg.get("token", "") or creds_global.get("token", "")).strip()
-        ws_user  = (ws_cfg.get("username", "") or creds_global.get("username", "")).strip()
-        ws_pass  = (ws_cfg.get("password", "") or creds_global.get("password", "")).strip()
+        skip_ssl  = ws_cfg.get("skip_ssl", config.get("skip_ssl", False))
+        _ws_creds = ws_cfg.get("credentials", {})
+        ws_token  = (_ws_creds.get("token", "") or creds_global.get("token", "")).strip()
+        ws_user   = (_ws_creds.get("username", "") or creds_global.get("username", "")).strip()
+        ws_pass   = (_ws_creds.get("password", "") or creds_global.get("password", "")).strip()
 
         # Reuse session + token for the same base URL to avoid 429 rate limiting
         cache_key = f"{root_url}|{ws_user}"
@@ -3087,10 +3110,11 @@ def api_catalog_delete(apm_id):
         if not root_url:
             continue
 
-        skip_ssl = ws_cfg.get("skip_ssl", config.get("skip_ssl", False))
-        ws_token = (ws_cfg.get("token", "") or creds_global.get("token", "")).strip()
-        ws_user  = (ws_cfg.get("username", "") or creds_global.get("username", "")).strip()
-        ws_pass  = (ws_cfg.get("password", "") or creds_global.get("password", "")).strip()
+        skip_ssl  = ws_cfg.get("skip_ssl", config.get("skip_ssl", False))
+        _ws_creds = ws_cfg.get("credentials", {})
+        ws_token  = (_ws_creds.get("token", "") or creds_global.get("token", "")).strip()
+        ws_user   = (_ws_creds.get("username", "") or creds_global.get("username", "")).strip()
+        ws_pass   = (_ws_creds.get("password", "") or creds_global.get("password", "")).strip()
 
         # Reuse session + token for the same base URL to avoid 429
         cache_key = f"{root_url}|{ws_user}"
@@ -3403,13 +3427,16 @@ def cribl_run():
         # Forward workspace-specific Cribl URL and credentials to cribl_service.
         # This allows different workspaces to target different Cribl leaders
         # (e.g. cribl.azn.com vs cribl.azs.com).
+        # Priority: request data → workspace credentials → global credentials
+        ws_creds = ws_cfg.get("credentials", {})
+        creds_global = config.get("credentials", {})
         run_cred_headers: dict[str, str] = {}
         ws_base_url = ws_cfg.get("base_url", config.get("base_url", ""))
         if ws_base_url:
             run_cred_headers["X-Cribl-Url"] = ws_base_url
-        ws_token = (data.get("token") or ws_cfg.get("token", "") or "").strip()
-        ws_user  = (data.get("username") or ws_cfg.get("username", "") or "").strip()
-        ws_pass  = (data.get("password") or ws_cfg.get("password", "") or "").strip()
+        ws_token = (data.get("token") or ws_creds.get("token", "") or creds_global.get("token", "") or "").strip()
+        ws_user  = (data.get("username") or ws_creds.get("username", "") or creds_global.get("username", "") or "").strip()
+        ws_pass  = (data.get("password") or ws_creds.get("password", "") or creds_global.get("password", "") or "").strip()
         if ws_token:
             run_cred_headers["X-Cribl-Token"] = ws_token
         if ws_user:
@@ -3436,15 +3463,16 @@ def cribl_run():
                 last_rc = rc
             all_output += f"\n{'='*60}\n wg={wg}\n{'='*60}\n{json.dumps(body, indent=2)}"
     else:
+        ws_creds_fb = ws_cfg.get("credentials", {})
         creds = config.get("credentials", {})
         for wg in worker_groups:
             form_dict = {
                 "appid": apmid, "appname": appname,
                 "workspace": workspace_name, "worker_group": wg,
                 "region": region, "mode": "single", "log_level": "INFO",
-                "token":    data.get("token", "")    or creds.get("token", ""),
-                "username": data.get("username", "") or creds.get("username", ""),
-                "password": data.get("password", "") or creds.get("password", ""),
+                "token":    data.get("token", "")    or ws_creds_fb.get("token", "")    or creds.get("token", ""),
+                "username": data.get("username", "") or ws_creds_fb.get("username", "") or creds.get("username", ""),
+                "password": data.get("password", "") or ws_creds_fb.get("password", "") or creds.get("password", ""),
             }
             if dry_run:
                 form_dict["dry_run"] = "true"

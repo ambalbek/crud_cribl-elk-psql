@@ -77,6 +77,16 @@ def resolve_config(raw: dict) -> dict:
     ece.setdefault("timeout", 60)
     ece.setdefault("templates_dir", "ops_rm_r_templates_output")
 
+    # ── workspaces — propagate global Cribl creds + URL as defaults ─────
+    for _ws_name, ws_cfg in cfg.get("workspaces", {}).items():
+        if _ws_name.startswith("_"):
+            continue
+        ws_creds = ws_cfg.setdefault("credentials", {})
+        ws_creds.setdefault("token", gl.get("cribl_token", ""))
+        ws_creds.setdefault("username", gl.get("cribl_username", ""))
+        ws_creds.setdefault("password", gl.get("cribl_password", ""))
+        ws_cfg.setdefault("base_url", gl.get("cribl_url", ""))
+
     # ── etn_onboarding ───────────────────────────────────────────────────
     etn = cfg.setdefault("etn_onboarding", {})
     etn.setdefault("database_url", gl.get("database_url", ""))

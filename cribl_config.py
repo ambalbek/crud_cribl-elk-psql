@@ -121,32 +121,37 @@ def get_workspace_url(config: dict, workspace_cfg: dict) -> str:
     return workspace_cfg.get("base_url", config.get("base_url", "")).rstrip("/")
 
 
-def resolve_credentials(config: dict, args) -> tuple[str, str, str]:
+def resolve_credentials(config: dict, args, workspace_cfg: dict | None = None) -> tuple[str, str, str]:
     """
     Returns (token, username, password).
 
     Priority order (highest first):
       1. CLI arg  (--token / --username / --password)
       2. Environment variable (CRIBL_TOKEN / CRIBL_USERNAME / CRIBL_PASSWORD)
-      3. config.json credentials block
+      3. Workspace-level credentials block (if workspace_cfg provided)
+      4. config.json credentials block
     """
+    ws_creds = (workspace_cfg or {}).get("credentials", {})
     creds = config.get("credentials", {})
 
     token = (
         getattr(args, "token", "") or
         os.environ.get("CRIBL_TOKEN", "") or
+        ws_creds.get("token", "") or
         creds.get("token", "")
     ).strip()
 
     username = (
         getattr(args, "username", "") or
         os.environ.get("CRIBL_USERNAME", "") or
+        ws_creds.get("username", "") or
         creds.get("username", "")
     ).strip()
 
     password = (
         getattr(args, "password", "") or
         os.environ.get("CRIBL_PASSWORD", "") or
+        ws_creds.get("password", "") or
         creds.get("password", "")
     ).strip()
 
