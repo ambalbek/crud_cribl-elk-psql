@@ -76,6 +76,27 @@ print('Enum types ready.')
 "
 
   echo "Running database migrations..."
+  # If tables exist but alembic has no record, stamp head first
+  python -c "
+import os, psycopg2
+conn = psycopg2.connect(os.environ['DATABASE_URL'])
+cur = conn.cursor()
+cur.execute(\"SELECT to_regclass('public.onboarding_requests')\")
+tables_exist = cur.fetchone()[0] is not None
+cur.execute(\"SELECT to_regclass('public.alembic_version')\")
+alembic_exists = cur.fetchone()[0] is not None
+has_version = False
+if alembic_exists:
+    cur.execute('SELECT count(*) FROM alembic_version')
+    has_version = cur.fetchone()[0] > 0
+cur.close()
+conn.close()
+if tables_exist and not has_version:
+    print('Tables exist but alembic_version is empty — need to stamp')
+    exit(1)
+print('DB state OK — proceeding with migrations')
+exit(0)
+" || flask --app wsgi:app db stamp head
   flask --app wsgi:app db upgrade
 else
   echo "DATABASE_URL not set — skipping DB setup"
