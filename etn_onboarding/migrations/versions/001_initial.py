@@ -8,6 +8,14 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
+
+def _table_exists(name: str) -> bool:
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text("SELECT to_regclass(:t)"), {"t": f"public.{name}"}
+    )
+    return result.scalar() is not None
+
 # revision identifiers, used by Alembic.
 revision = "001_initial"
 down_revision = None
@@ -17,6 +25,8 @@ depends_on = None
 
 def upgrade() -> None:
     # --- onboarding_requests ---
+    if _table_exists("onboarding_requests"):
+        return  # Tables already exist — nothing to do (idempotent re-run)
     op.create_table(
         "onboarding_requests",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
