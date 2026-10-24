@@ -15,11 +15,13 @@ else:
 " > /app/config.json
 fi
 
-# Patch in-cluster service URLs with environment suffix (e.g. dev → cribl-service-dev)
-if [ -n "$DEPLOY_ENV" ] && [ -f /app/config.json ]; then
-  echo "Patching service URLs with suffix: -${DEPLOY_ENV}"
+# Derive environment suffix from deployment name via HOSTNAME
+# e.g. HOSTNAME=cribl-service-dev-7f8b9c6d4-x2k5m → DEPLOY_ENV=dev
+if [ -f /app/config.json ]; then
+  DEPLOY_ENV=$(echo "$HOSTNAME" | awk -F- '{print $(NF-2)}')
+  echo "Detected DEPLOY_ENV=${DEPLOY_ENV} from HOSTNAME=${HOSTNAME}"
   python3 -c "
-import json, sys, re
+import sys, re
 with open('/app/config.json') as f:
     text = f.read()
 for svc in ['cribl-service', 'ece-service', 'etn-onboarding', 'cribl-framework']:
