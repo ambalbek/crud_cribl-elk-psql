@@ -17,17 +17,19 @@ else:
 " > /app/config.json
 fi
 
-# Derive environment suffix from deployment name via HOSTNAME
-# e.g. HOSTNAME=etn-onboarding-dev-7f8b9c6d4-x2k5m → DEPLOY_ENV=dev
+# Derive environment suffix from HOSTNAME
+# e.g. HOSTNAME=etn-onboarding-deployment-dev-XXXXXXX → DEPLOY_ENV=dev
+# Service naming: <app>-service-<env> (e.g. etn-onboarding-service-dev)
 if [ -f /app/config.json ]; then
-  DEPLOY_ENV=$(echo "$HOSTNAME" | awk -F- '{print $(NF-2)}')
+  DEPLOY_ENV=$(echo "$HOSTNAME" | awk -F- '{print $(NF-1)}')
   echo "Detected DEPLOY_ENV=${DEPLOY_ENV} from HOSTNAME=${HOSTNAME}"
   python3 -c "
 import sys, re
+env = sys.argv[1]
 with open('/app/config.json') as f:
     text = f.read()
 for svc in ['cribl-service', 'ece-service', 'etn-onboarding', 'cribl-framework']:
-    text = re.sub(r'http://' + svc + r':', 'http://' + svc + '-' + sys.argv[1] + ':', text)
+    text = re.sub(r'http://' + svc + r':', 'http://' + svc + '-service-' + env + ':', text)
 with open('/app/config.json', 'w') as f:
     f.write(text)
 " "$DEPLOY_ENV"
