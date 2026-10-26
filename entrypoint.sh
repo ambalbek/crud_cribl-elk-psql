@@ -19,7 +19,7 @@ fi
 # Derive environment suffix from HOSTNAME
 # e.g. HOSTNAME=cribl-framework-deployment-dev-XXXXXXX → DEPLOY_ENV=dev
 # Service naming: <app>-service-<env> (e.g. cribl-service-service-dev)
-if [ -f /app/config.json ]; then
+if [ -f /app/config.json ] && echo "$HOSTNAME" | grep -q -- '-deployment-'; then
   DEPLOY_ENV=$(echo "$HOSTNAME" | sed 's/.*-deployment-//' | awk -F- '{print $1}')
   echo "Detected DEPLOY_ENV=${DEPLOY_ENV} from HOSTNAME=${HOSTNAME}"
   python3 -c "

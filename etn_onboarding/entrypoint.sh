@@ -76,27 +76,58 @@ print('Enum types ready.')
 "
 
   echo "Running database migrations..."
-  # If tables exist but alembic has no record, stamp head first
   python -c "
-import os, psycopg2
+import os, glob, psycopg2
 conn = psycopg2.connect(os.environ['DATABASE_URL'])
+conn.autocommit = True
 cur = conn.cursor()
+
 cur.execute(\"SELECT to_regclass('public.onboarding_requests')\")
 tables_exist = cur.fetchone()[0] is not None
+
 cur.execute(\"SELECT to_regclass('public.alembic_version')\")
 alembic_exists = cur.fetchone()[0] is not None
+
 has_version = False
+current_rev = None
 if alembic_exists:
-    cur.execute('SELECT count(*) FROM alembic_version')
-    has_version = cur.fetchone()[0] > 0
+    cur.execute('SELECT version_num FROM alembic_version LIMIT 1')
+    row = cur.fetchone()
+    if row and row[0]:
+        has_version = True
+        current_rev = row[0]
+
+# Get all known revision IDs from migration files on disk
+known = set()
+for f in glob.glob('migrations/versions/*.py'):
+    base = os.path.basename(f).replace('.py', '')
+    known.add(base)
+
+if has_version and current_rev not in known:
+    # DB references a revision that no longer exists (e.g. removed 009)
+    # Find the latest known revision by filename sort
+    latest = sorted(known)[-1] if known else None
+    if latest:
+        print(f'alembic_version references unknown revision \"{current_rev}\" — resetting to \"{latest}\"')
+        cur.execute('UPDATE alembic_version SET version_num = %s', (latest,))
+    else:
+        print('No migration files found — clearing alembic_version')
+        cur.execute('DELETE FROM alembic_version')
+elif tables_exist and not has_version:
+    print('Tables exist but alembic is not tracking — stamping at 001_initial')
+    cur.close()
+    conn.close()
+    import subprocess, sys
+    subprocess.run([sys.executable, '-m', 'flask', '--app', 'wsgi:app', 'db', 'stamp', '001_initial'], check=True)
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    conn.autocommit = True
+    cur = conn.cursor()
+else:
+    print('DB state OK — proceeding with migrations')
+
 cur.close()
 conn.close()
-if tables_exist and not has_version:
-    print('Tables exist but alembic is not tracking — stamping at 001_initial so all migrations run')
-    exit(1)
-print('DB state OK — proceeding with migrations')
-exit(0)
-" || flask --app wsgi:app db stamp 001_initial
+"
   flask --app wsgi:app db upgrade
 else
   echo "DATABASE_URL not set — skipping DB setup"
