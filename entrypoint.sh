@@ -9,7 +9,6 @@ import json, sys
 raw = sys.stdin.read().strip().strip(\"'\")
 parsed = json.loads(raw)
 if isinstance(parsed, str):
-    # Double-wrapped: JSON string containing JSON — unwrap once more
     sys.stdout.write(parsed)
 else:
     json.dump(parsed, sys.stdout, indent=2)
