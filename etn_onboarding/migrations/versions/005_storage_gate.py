@@ -21,12 +21,20 @@ def upgrade() -> None:
     ):
         op.execute(f"ALTER TYPE request_status_enum ADD VALUE IF NOT EXISTS '{val}'")
 
-    # Storage verification columns
-    op.add_column("onboarding_requests", sa.Column("storage_container", sa.String(256), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("storage_prefix", sa.String(256), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("storage_region", sa.String(64), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("storage_verified_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("storage_verified_by", sa.String(256), nullable=True))
+    # Storage verification columns (idempotent)
+    for col_name, col_type in [
+        ("storage_container", "VARCHAR(256)"),
+        ("storage_prefix", "VARCHAR(256)"),
+        ("storage_region", "VARCHAR(64)"),
+        ("storage_verified_at", "TIMESTAMPTZ"),
+        ("storage_verified_by", "VARCHAR(256)"),
+    ]:
+        op.execute(f"""
+            DO $$ BEGIN
+                ALTER TABLE onboarding_requests ADD COLUMN {col_name} {col_type};
+            EXCEPTION WHEN duplicate_column THEN NULL;
+            END $$;
+        """)
 
 
 def downgrade() -> None:

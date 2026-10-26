@@ -14,20 +14,29 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(name: str) -> bool:
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text("SELECT to_regclass(:t)"), {"t": f"public.{name}"}
+    )
+    return result.scalar() is not None
+
+
 def upgrade() -> None:
     # ── pack_registry table ──────────────────────────────────────
-    op.create_table(
-        "pack_registry",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("data_type", sa.String(64), unique=True, nullable=False),
-        sa.Column("pack_id", sa.String(128), nullable=False),
-        sa.Column("pack_version", sa.String(32), nullable=False),
-        sa.Column("attachment", sa.String(16), nullable=False, server_default="route"),
-        sa.Column("source_id", sa.String(128), nullable=True),
-        sa.Column("status", sa.String(16), nullable=False, server_default="approved"),
-        sa.Column("notes", sa.Text, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-    )
+    if not _table_exists("pack_registry"):
+        op.create_table(
+            "pack_registry",
+            sa.Column("id", UUID(as_uuid=True), primary_key=True),
+            sa.Column("data_type", sa.String(64), unique=True, nullable=False),
+            sa.Column("pack_id", sa.String(128), nullable=False),
+            sa.Column("pack_version", sa.String(32), nullable=False),
+            sa.Column("attachment", sa.String(16), nullable=False, server_default="route"),
+            sa.Column("source_id", sa.String(128), nullable=True),
+            sa.Column("status", sa.String(16), nullable=False, server_default="approved"),
+            sa.Column("notes", sa.Text, nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        )
 
     # ── Seed: 'other' fallback + known data types ────────────────
     op.execute("""
@@ -41,8 +50,18 @@ def upgrade() -> None:
     """)
 
     # ── Pack columns on onboarding_requests ──────────────────────
-    op.add_column("onboarding_requests", sa.Column("pack_id", sa.String(128), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("pack_version", sa.String(32), nullable=True))
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE onboarding_requests ADD COLUMN pack_id VARCHAR(128);
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE onboarding_requests ADD COLUMN pack_version VARCHAR(32);
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+    """)
 
 
 def downgrade() -> None:

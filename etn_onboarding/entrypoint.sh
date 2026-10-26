@@ -92,11 +92,11 @@ if alembic_exists:
 cur.close()
 conn.close()
 if tables_exist and not has_version:
-    print('Tables exist but alembic_version is empty — need to stamp')
+    print('Tables exist but alembic is not tracking — stamping at 001_initial so all migrations run')
     exit(1)
 print('DB state OK — proceeding with migrations')
 exit(0)
-" || flask --app wsgi:app db stamp head
+" || flask --app wsgi:app db stamp 001_initial
   flask --app wsgi:app db upgrade
 else
   echo "DATABASE_URL not set — skipping DB setup"

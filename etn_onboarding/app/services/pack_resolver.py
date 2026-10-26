@@ -28,17 +28,21 @@ def resolve_pack(data_type: str | None) -> PackRef:
     """Look up an approved pack. Falls back to 'other'. Never raises."""
     lookup = (data_type or "").strip().lower() or FALLBACK_DATA_TYPE
 
-    entry = PackRegistry.query.filter_by(
-        data_type=lookup,
-        status="approved",
-    ).first()
-
-    if entry is None and lookup != FALLBACK_DATA_TYPE:
-        logger.info("No approved pack for data_type=%r, falling back to '%s'", lookup, FALLBACK_DATA_TYPE)
+    try:
         entry = PackRegistry.query.filter_by(
-            data_type=FALLBACK_DATA_TYPE,
+            data_type=lookup,
             status="approved",
         ).first()
+
+        if entry is None and lookup != FALLBACK_DATA_TYPE:
+            logger.warning("No approved pack for data_type=%r, falling back to '%s'", lookup, FALLBACK_DATA_TYPE)
+            entry = PackRegistry.query.filter_by(
+                data_type=FALLBACK_DATA_TYPE,
+                status="approved",
+            ).first()
+    except Exception:
+        logger.exception("pack_registry query failed (table may not exist) — using passthru fallback")
+        entry = None
 
     if entry is None:
         logger.warning("No approved pack found for data_type=%r and no fallback", lookup)

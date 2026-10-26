@@ -14,19 +14,29 @@ branch_labels = None
 depends_on = None
 
 
+def _add_column_if_missing(table, col_name, col_type):
+    """Idempotent add_column using PL/pgSQL exception handling."""
+    op.execute(f"""
+        DO $$ BEGIN
+            ALTER TABLE {table} ADD COLUMN {col_name} {col_type};
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+    """)
+
+
 def upgrade() -> None:
-    op.add_column("onboarding_requests", sa.Column("lan_id", sa.String(128), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("first_name", sa.String(128), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("last_name", sa.String(128), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("app_emails", JSONB, nullable=True))
-    op.add_column("onboarding_requests", sa.Column("workspace", sa.String(64), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("worker_group", sa.String(128), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("region", sa.String(16), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("data_type", sa.String(64), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("log_destinations", JSONB, nullable=True))
-    op.add_column("onboarding_requests", sa.Column("log_types", JSONB, nullable=True))
-    op.add_column("onboarding_requests", sa.Column("ilm_tier", sa.String(32), nullable=True))
-    op.add_column("onboarding_requests", sa.Column("entitlement_groups", JSONB, nullable=True))
+    _add_column_if_missing("onboarding_requests", "lan_id", "VARCHAR(128)")
+    _add_column_if_missing("onboarding_requests", "first_name", "VARCHAR(128)")
+    _add_column_if_missing("onboarding_requests", "last_name", "VARCHAR(128)")
+    _add_column_if_missing("onboarding_requests", "app_emails", "JSONB")
+    _add_column_if_missing("onboarding_requests", "workspace", "VARCHAR(64)")
+    _add_column_if_missing("onboarding_requests", "worker_group", "VARCHAR(128)")
+    _add_column_if_missing("onboarding_requests", "region", "VARCHAR(16)")
+    _add_column_if_missing("onboarding_requests", "data_type", "VARCHAR(64)")
+    _add_column_if_missing("onboarding_requests", "log_destinations", "JSONB")
+    _add_column_if_missing("onboarding_requests", "log_types", "JSONB")
+    _add_column_if_missing("onboarding_requests", "ilm_tier", "VARCHAR(32)")
+    _add_column_if_missing("onboarding_requests", "entitlement_groups", "JSONB")
 
 
 def downgrade() -> None:

@@ -25,114 +25,115 @@ depends_on = None
 
 def upgrade() -> None:
     # --- onboarding_requests ---
-    if _table_exists("onboarding_requests"):
-        return  # Tables already exist — nothing to do (idempotent re-run)
-    op.create_table(
-        "onboarding_requests",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("app_name", sa.String(256), nullable=False),
-        sa.Column("apm_id", sa.String(128), unique=True, nullable=False),
-        sa.Column("requestor_name", sa.String(256), nullable=False),
-        sa.Column("requestor_email", sa.String(320), nullable=False),
-        sa.Column("team", sa.String(256), nullable=False),
-        sa.Column("environment", JSONB, nullable=False, server_default="[]"),
-        sa.Column(
-            "status",
-            sa.Enum(
-                "intake_pending", "intake_validated", "engagement", "solutioning",
-                "storage_pending", "storage_confirmed",
-                "delivery_destination", "delivery_pack", "delivery_route",
-                "delivery_collection", "delivery_routing", "delivery_storage",
-                "delivery_complete", "delivery_failed",
-                "validation", "reverify", "complete", "cancelled",
-                name="request_status_enum",
-                create_type=False,
+    if not _table_exists("onboarding_requests"):
+        op.create_table(
+            "onboarding_requests",
+            sa.Column("id", UUID(as_uuid=True), primary_key=True),
+            sa.Column("app_name", sa.String(256), nullable=False),
+            sa.Column("apm_id", sa.String(128), unique=True, nullable=False),
+            sa.Column("requestor_name", sa.String(256), nullable=False),
+            sa.Column("requestor_email", sa.String(320), nullable=False),
+            sa.Column("team", sa.String(256), nullable=False),
+            sa.Column("environment", JSONB, nullable=False, server_default="[]"),
+            sa.Column(
+                "status",
+                sa.Enum(
+                    "intake_pending", "intake_validated", "engagement", "solutioning",
+                    "storage_pending", "storage_confirmed",
+                    "delivery_destination", "delivery_pack", "delivery_route",
+                    "delivery_collection", "delivery_routing", "delivery_storage",
+                    "delivery_complete", "delivery_failed",
+                    "validation", "reverify", "complete", "cancelled",
+                    name="request_status_enum",
+                    create_type=False,
+                ),
+                nullable=False,
+                server_default="intake_pending",
             ),
-            nullable=False,
-            server_default="intake_pending",
-        ),
-        sa.Column("form_data", JSONB, nullable=True),
-        sa.Column("entity_mapping", JSONB, nullable=True),
-        sa.Column("workbook_data", JSONB, nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-    )
+            sa.Column("form_data", JSONB, nullable=True),
+            sa.Column("entity_mapping", JSONB, nullable=True),
+            sa.Column("workbook_data", JSONB, nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+        )
 
     # --- audit_logs ---
-    op.create_table(
-        "audit_logs",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column(
-            "request_id",
-            UUID(as_uuid=True),
-            sa.ForeignKey("onboarding_requests.id", ondelete="CASCADE"),
-            nullable=False,
-            index=True,
-        ),
-        sa.Column(
-            "stage",
-            sa.Enum(
-                "intake_pending", "intake_validated", "engagement", "solutioning",
-                "storage_pending", "storage_confirmed",
-                "delivery_destination", "delivery_pack", "delivery_route",
-                "delivery_collection", "delivery_routing", "delivery_storage",
-                "delivery_complete", "delivery_failed",
-                "validation", "reverify", "complete", "cancelled",
-                name="request_status_enum", create_type=False,
+    if not _table_exists("audit_logs"):
+        op.create_table(
+            "audit_logs",
+            sa.Column("id", UUID(as_uuid=True), primary_key=True),
+            sa.Column(
+                "request_id",
+                UUID(as_uuid=True),
+                sa.ForeignKey("onboarding_requests.id", ondelete="CASCADE"),
+                nullable=False,
+                index=True,
             ),
-            nullable=False,
-        ),
-        sa.Column("action", sa.String(256), nullable=False),
-        sa.Column("actor", sa.String(256), nullable=False),
-        sa.Column("outcome", sa.String(256), nullable=False),
-        sa.Column("metadata", JSONB, nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-    )
+            sa.Column(
+                "stage",
+                sa.Enum(
+                    "intake_pending", "intake_validated", "engagement", "solutioning",
+                    "storage_pending", "storage_confirmed",
+                    "delivery_destination", "delivery_pack", "delivery_route",
+                    "delivery_collection", "delivery_routing", "delivery_storage",
+                    "delivery_complete", "delivery_failed",
+                    "validation", "reverify", "complete", "cancelled",
+                    name="request_status_enum", create_type=False,
+                ),
+                nullable=False,
+            ),
+            sa.Column("action", sa.String(256), nullable=False),
+            sa.Column("actor", sa.String(256), nullable=False),
+            sa.Column("outcome", sa.String(256), nullable=False),
+            sa.Column("metadata", JSONB, nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+        )
 
     # --- delivery_jobs ---
-    op.create_table(
-        "delivery_jobs",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column(
-            "request_id",
-            UUID(as_uuid=True),
-            sa.ForeignKey("onboarding_requests.id", ondelete="CASCADE"),
-            nullable=False,
-            index=True,
-        ),
-        sa.Column(
-            "job_type",
-            sa.Enum("cribl_edge", "etn_portal", "harness_blob",
-                    name="job_type_enum", create_type=False),
-            nullable=False,
-        ),
-        sa.Column(
-            "status",
-            sa.Enum("pending", "running", "success", "failed",
-                    name="job_status_enum", create_type=False),
-            nullable=False,
-            server_default="pending",
-        ),
-        sa.Column("external_ref", sa.String(512), nullable=True),
-        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("result", JSONB, nullable=True),
-    )
+    if not _table_exists("delivery_jobs"):
+        op.create_table(
+            "delivery_jobs",
+            sa.Column("id", UUID(as_uuid=True), primary_key=True),
+            sa.Column(
+                "request_id",
+                UUID(as_uuid=True),
+                sa.ForeignKey("onboarding_requests.id", ondelete="CASCADE"),
+                nullable=False,
+                index=True,
+            ),
+            sa.Column(
+                "job_type",
+                sa.Enum("cribl_edge", "etn_portal", "harness_blob",
+                        name="job_type_enum", create_type=False),
+                nullable=False,
+            ),
+            sa.Column(
+                "status",
+                sa.Enum("pending", "running", "success", "failed",
+                        name="job_status_enum", create_type=False),
+                nullable=False,
+                server_default="pending",
+            ),
+            sa.Column("external_ref", sa.String(512), nullable=True),
+            sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("result", JSONB, nullable=True),
+        )
 
 
 def downgrade() -> None:
