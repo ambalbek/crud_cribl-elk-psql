@@ -33,38 +33,28 @@ with open('/app/config.json', 'w') as f:
 " "$DEPLOY_ENV"
 fi
 
-# Inject Cribl master node URLs into workspace base_url fields.
-# Reads from env vars set by Conjur:
-#   CRIBL_URL_DEV, CRIBL_URL_TEST, CRIBL_URL_ALTPROD, CRIBL_URL_PROD
-# Each is a comma-separated list of master node URLs.
-# Skips any that are not set.
+# Inject Cribl master node URLs into every workspace's base_url.
+# Same 4 master nodes apply to all environments/clusters.
 if [ -f /app/config.json ]; then
   python3 -c "
-import json, os
+import json
 
-url_map = {
-    'dev':     os.environ.get('CRIBL_URL_DEV', ''),
-    'test':    os.environ.get('CRIBL_URL_TEST', ''),
-    'altprod': os.environ.get('CRIBL_URL_ALTPROD', ''),
-    'prod':    os.environ.get('CRIBL_URL_PROD', ''),
-}
+CRIBL_URLS = [
+    'https://cribl-leader1.company.com:9000',
+    'https://cribl-leader2.company.com:9000',
+    'https://cribl-leader3.company.com:9000',
+    'https://cribl-leader4.company.com:9000',
+]
 
 with open('/app/config.json') as f:
     cfg = json.load(f)
 
-workspaces = cfg.get('workspaces', {})
-injected = 0
-for ws_name, raw in url_map.items():
-    if not raw or ws_name not in workspaces:
-        continue
-    urls = [u.strip().rstrip('/') for u in raw.split(',') if u.strip()]
-    # single URL → string, multiple → list
-    workspaces[ws_name]['base_url'] = urls[0] if len(urls) == 1 else urls
-    injected += 1
+for ws_cfg in cfg.get('workspaces', {}).values():
+    ws_cfg['base_url'] = CRIBL_URLS
 
 with open('/app/config.json', 'w') as f:
     json.dump(cfg, f, indent=2)
-print(f'Cribl master URLs injected: {injected} workspace(s)')
+print(f'Cribl master URLs injected into all workspaces: {len(CRIBL_URLS)} endpoints')
 "
 fi
 
