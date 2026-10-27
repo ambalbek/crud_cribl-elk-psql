@@ -51,7 +51,12 @@
   "workspaces": {
     "_comment": "Each workspace points to a different Cribl master node via base_url. The UI Cribl URL dropdown auto-populates from these.",
     "dev": {
-      "base_url": "https://cribl-dev-leader.company.com:9000",
+      "base_url": [
+        "https://cribl-dev-leader1.company.com:9000",
+        "https://cribl-dev-leader2.company.com:9000",
+        "https://cribl-dev-leader3.company.com:9000",
+        "https://cribl-dev-leader4.company.com:9000"
+      ],
       "worker_groups": ["default", "wg-dev-01", "wg-dev-02"],
       "dest_templates": {
         "azn": "blob_dest_template_azn_dev.json",
@@ -60,7 +65,12 @@
       "description": "Dev cluster"
     },
     "test": {
-      "base_url": "https://cribl-test-leader.company.com:9000",
+      "base_url": [
+        "https://cribl-test-leader1.company.com:9000",
+        "https://cribl-test-leader2.company.com:9000",
+        "https://cribl-test-leader3.company.com:9000",
+        "https://cribl-test-leader4.company.com:9000"
+      ],
       "worker_groups": ["wg-test-01", "wg-test-02"],
       "dest_templates": {
         "azn": "blob_dest_template_azn_test.json",
@@ -69,7 +79,12 @@
       "description": "Test cluster"
     },
     "altprod": {
-      "base_url": "https://cribl-altprod-leader.company.com:9000",
+      "base_url": [
+        "https://cribl-altprod-leader1.company.com:9000",
+        "https://cribl-altprod-leader2.company.com:9000",
+        "https://cribl-altprod-leader3.company.com:9000",
+        "https://cribl-altprod-leader4.company.com:9000"
+      ],
       "worker_groups": ["wg-altprod-01", "wg-altprod-02"],
       "dest_templates": {
         "azn": "blob_dest_template_azn_altprod.json",
@@ -79,7 +94,12 @@
       "require_allow": true
     },
     "prod": {
-      "base_url": "https://cribl-prod-leader.company.com:9000",
+      "base_url": [
+        "https://cribl-prod-leader1.company.com:9000",
+        "https://cribl-prod-leader2.company.com:9000",
+        "https://cribl-prod-leader3.company.com:9000",
+        "https://cribl-prod-leader4.company.com:9000"
+      ],
       "worker_groups": ["wg-prod-01", "wg-prod-02"],
       "dest_templates": {
         "azn": "blob_dest_template_azn_prod.json",

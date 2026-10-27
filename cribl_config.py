@@ -52,7 +52,12 @@ def build_workspace_urls(config: dict, workspace_cfg: dict, worker_group: str) -
     Workspace-level base_url overrides the global one, allowing different
     workspaces to point to different Cribl clusters.
     """
-    root_url = workspace_cfg.get("base_url", config.get("base_url", "")).rstrip("/")
+    base = workspace_cfg.get("base_url", config.get("base_url", ""))
+    # base_url may be a list when the workspace has multiple master nodes;
+    # the caller is expected to override via --cribl-url after picking one.
+    if isinstance(base, list):
+        base = base[0] if base else ""
+    root_url = base.rstrip("/")
     api_base = f"{root_url}/api/v1/m/{worker_group}"
     return root_url, api_base
 
@@ -116,9 +121,13 @@ def get_dest_prefix(config: dict, workspace_cfg: dict, region: str) -> str:
     return prefixes.get(region, f"hcsc-blob-storage-{region}")
 
 
-def get_workspace_url(config: dict, workspace_cfg: dict) -> str:
-    """Returns the effective base_url for a workspace (for display purposes)."""
-    return workspace_cfg.get("base_url", config.get("base_url", "")).rstrip("/")
+def get_workspace_url(config: dict, workspace_cfg: dict) -> str | list[str]:
+    """Returns the effective base_url for a workspace (for display purposes).
+    May return a list when the workspace has multiple master nodes."""
+    base = workspace_cfg.get("base_url", config.get("base_url", ""))
+    if isinstance(base, list):
+        return [u.rstrip("/") for u in base if u]
+    return base.rstrip("/")
 
 
 def resolve_credentials(config: dict, args, workspace_cfg: dict | None = None) -> tuple[str, str, str]:

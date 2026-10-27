@@ -34,8 +34,10 @@ with open('/app/config.json', 'w') as f:
 fi
 
 # Inject Cribl master node URLs into workspace base_url fields.
-# Reads from env vars set by Conjur: CRIBL_URL_DEV, CRIBL_URL_TEST,
-# CRIBL_URL_ALTPROD, CRIBL_URL_PROD.  Skips any that are not set.
+# Reads from env vars set by Conjur:
+#   CRIBL_URL_DEV, CRIBL_URL_TEST, CRIBL_URL_ALTPROD, CRIBL_URL_PROD
+# Each is a comma-separated list of master node URLs.
+# Skips any that are not set.
 if [ -f /app/config.json ]; then
   python3 -c "
 import json, os
@@ -52,10 +54,13 @@ with open('/app/config.json') as f:
 
 workspaces = cfg.get('workspaces', {})
 injected = 0
-for ws_name, url in url_map.items():
-    if url and ws_name in workspaces:
-        workspaces[ws_name]['base_url'] = url.rstrip('/')
-        injected += 1
+for ws_name, raw in url_map.items():
+    if not raw or ws_name not in workspaces:
+        continue
+    urls = [u.strip().rstrip('/') for u in raw.split(',') if u.strip()]
+    # single URL → string, multiple → list
+    workspaces[ws_name]['base_url'] = urls[0] if len(urls) == 1 else urls
+    injected += 1
 
 with open('/app/config.json', 'w') as f:
     json.dump(cfg, f, indent=2)

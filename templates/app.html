@@ -162,8 +162,15 @@
           {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
         {% endif %}
         {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
-          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
-            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% set bu = ws_cfg.get('base_url', '') %}
+          {% if bu is string and bu and bu not in cribl_nodes %}
+            {% if cribl_nodes.update({bu: ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% elif bu is iterable and bu is not string %}
+            {% for u in bu %}
+              {% if u and u not in cribl_nodes %}
+                {% if cribl_nodes.update({u: ws_cfg.get('description', ws_name) ~ ' (' ~ loop.index ~ ')'}) %}{% endif %}
+              {% endif %}
+            {% endfor %}
           {% endif %}
         {% endfor %}
         <div class="form-group">
@@ -536,8 +543,15 @@
           {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
         {% endif %}
         {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
-          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
-            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% set bu = ws_cfg.get('base_url', '') %}
+          {% if bu is string and bu and bu not in cribl_nodes %}
+            {% if cribl_nodes.update({bu: ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% elif bu is iterable and bu is not string %}
+            {% for u in bu %}
+              {% if u and u not in cribl_nodes %}
+                {% if cribl_nodes.update({u: ws_cfg.get('description', ws_name) ~ ' (' ~ loop.index ~ ')'}) %}{% endif %}
+              {% endif %}
+            {% endfor %}
           {% endif %}
         {% endfor %}
         <div class="form-group">
@@ -688,8 +702,15 @@
           {% if cribl_nodes.update({config.get('base_url'): 'default'}) %}{% endif %}
         {% endif %}
         {% for ws_name, ws_cfg in config.get('workspaces', {}).items() if not ws_name.startswith('_') %}
-          {% if ws_cfg.get('base_url') and ws_cfg.get('base_url') not in cribl_nodes %}
-            {% if cribl_nodes.update({ws_cfg.get('base_url'): ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% set bu = ws_cfg.get('base_url', '') %}
+          {% if bu is string and bu and bu not in cribl_nodes %}
+            {% if cribl_nodes.update({bu: ws_cfg.get('description', ws_name)}) %}{% endif %}
+          {% elif bu is iterable and bu is not string %}
+            {% for u in bu %}
+              {% if u and u not in cribl_nodes %}
+                {% if cribl_nodes.update({u: ws_cfg.get('description', ws_name) ~ ' (' ~ loop.index ~ ')'}) %}{% endif %}
+              {% endif %}
+            {% endfor %}
           {% endif %}
         {% endfor %}
         <div class="form-group">
