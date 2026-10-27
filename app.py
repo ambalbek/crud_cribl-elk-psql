@@ -838,10 +838,13 @@ def _cribl_base_and_headers(
     config = load_config()
     ws_creds = (workspace_cfg or {}).get("credentials", {})
 
+    ws_base = (workspace_cfg or {}).get("base_url", "")
+    if isinstance(ws_base, list):
+        ws_base = ws_base[0] if ws_base else ""
     base_url = (
         cribl_url.rstrip("/")
         or CRIBL_SERVICE_URL
-        or (workspace_cfg or {}).get("base_url", "").rstrip("/")
+        or ws_base.rstrip("/")
         or (config.get("base_url") or "").rstrip("/")
     )
     if not base_url:
@@ -865,6 +868,8 @@ def _cribl_base_and_headers(
             headers["X-Cribl-Password"] = resolved_pass
         # Forward workspace base_url so cribl_service targets the right cluster
         ws_url = (workspace_cfg or {}).get("base_url", "")
+        if isinstance(ws_url, list):
+            ws_url = ws_url[0] if ws_url else ""
         if ws_url:
             headers["X-Cribl-Url"] = ws_url
         return base_url, headers
@@ -2290,6 +2295,8 @@ def run_role_rm():
                 t2_cred_headers["X-Cribl-Password"] = t2_cribl_password
             # Forward workspace base_url so cribl_service targets the right cluster
             ws_base = ws_cfg.get("base_url", "")
+            if isinstance(ws_base, list):
+                ws_base = ws_base[0] if ws_base else ""
             if ws_base:
                 t2_cred_headers["X-Cribl-Url"] = ws_base
 
@@ -2588,7 +2595,8 @@ def _build_catalog(config: dict) -> list:
     for ws_name, ws_cfg in workspaces.items():
         worker_groups = ws_cfg.get("worker_groups", [])
         routes_table  = ws_cfg.get("routes_table", "default")
-        root_url      = ws_cfg.get("base_url", config.get("base_url", "")).rstrip("/")
+        _raw_base     = ws_cfg.get("base_url", config.get("base_url", ""))
+        root_url      = (_raw_base[0] if isinstance(_raw_base, list) and _raw_base else _raw_base or "").rstrip("/")
         if not root_url:
             continue
 
@@ -3106,7 +3114,8 @@ def api_catalog_delete(apm_id):
     for ws_name, ws_cfg in workspaces.items():
         worker_groups = ws_cfg.get("worker_groups", [])
         routes_table  = ws_cfg.get("routes_table", "default")
-        root_url      = ws_cfg.get("base_url", config.get("base_url", "")).rstrip("/")
+        _raw_base     = ws_cfg.get("base_url", config.get("base_url", ""))
+        root_url      = (_raw_base[0] if isinstance(_raw_base, list) and _raw_base else _raw_base or "").rstrip("/")
         if not root_url:
             continue
 
@@ -3432,6 +3441,8 @@ def cribl_run():
         creds_global = config.get("credentials", {})
         run_cred_headers: dict[str, str] = {}
         ws_base_url = ws_cfg.get("base_url", config.get("base_url", ""))
+        if isinstance(ws_base_url, list):
+            ws_base_url = ws_base_url[0] if ws_base_url else ""
         if ws_base_url:
             run_cred_headers["X-Cribl-Url"] = ws_base_url
         ws_token = (data.get("token") or ws_creds.get("token", "") or creds_global.get("token", "") or "").strip()
