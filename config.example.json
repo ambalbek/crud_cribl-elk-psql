@@ -49,31 +49,43 @@
   "diff_lines": 3,
 
   "workspaces": {
-    "_comment": "Each workspace can override base_url to target a different Cribl leader (e.g. azn vs azs).",
-    "dev_azn": {
-      "base_url": "https://cribl.azn.com:9000",
-      "worker_groups": ["default"],
-      "dest_templates": {"azn": "blob_dest_template_azn_dev.json"},
-      "description": "Dev - Azure North"
+    "_comment": "Each workspace points to a different Cribl master node via base_url. The UI Cribl URL dropdown auto-populates from these.",
+    "dev": {
+      "base_url": "https://cribl-dev-leader.company.com:9000",
+      "worker_groups": ["default", "wg-dev-01", "wg-dev-02"],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_dev.json",
+        "azs": "blob_dest_template_azs_dev.json"
+      },
+      "description": "Dev cluster"
     },
-    "dev_azs": {
-      "base_url": "https://cribl.azs.com:9000",
-      "worker_groups": ["default"],
-      "dest_templates": {"azs": "blob_dest_template_azs_dev.json"},
-      "description": "Dev - Azure South"
+    "test": {
+      "base_url": "https://cribl-test-leader.company.com:9000",
+      "worker_groups": ["wg-test-01", "wg-test-02"],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_test.json",
+        "azs": "blob_dest_template_azs_test.json"
+      },
+      "description": "Test cluster"
     },
-    "prod_azn": {
-      "base_url": "https://cribl.azn.com:9000",
-      "worker_groups": ["wg-prod-01"],
-      "dest_templates": {"azn": "blob_dest_template_azn_prod.json"},
-      "description": "Prod - Azure North",
+    "altprod": {
+      "base_url": "https://cribl-altprod-leader.company.com:9000",
+      "worker_groups": ["wg-altprod-01", "wg-altprod-02"],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_altprod.json",
+        "azs": "blob_dest_template_azs_altprod.json"
+      },
+      "description": "Alt-Prod cluster",
       "require_allow": true
     },
-    "prod_azs": {
-      "base_url": "https://cribl.azs.com:9000",
-      "worker_groups": ["wg-prod-01"],
-      "dest_templates": {"azs": "blob_dest_template_azs_prod.json"},
-      "description": "Prod - Azure South",
+    "prod": {
+      "base_url": "https://cribl-prod-leader.company.com:9000",
+      "worker_groups": ["wg-prod-01", "wg-prod-02"],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_prod.json",
+        "azs": "blob_dest_template_azs_prod.json"
+      },
+      "description": "Production cluster",
       "require_allow": true
     }
   },
