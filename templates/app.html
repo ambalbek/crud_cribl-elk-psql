@@ -245,7 +245,7 @@
           <div class="col-2">
             <div class="form-group">
               <label for="t1_appid">APMID</label>
-              <input type="text" id="t1_appid" placeholder="APP001">
+              <input type="text" id="t1_appid" placeholder="app12345678" pattern="^app\d{8}$">
             </div>
             <div class="form-group">
               <label for="t1_appname">Appname</label>
@@ -413,7 +413,7 @@
           <div class="col-2">
             <div class="form-group">
               <label for="t2_apmid">APMID</label>
-              <input type="text" id="t2_apmid" placeholder="app00001234">
+              <input type="text" id="t2_apmid" placeholder="app12345678" pattern="^app\d{8}$">
             </div>
             <div class="form-group">
               <label for="t2_app_name">Appname</label>
@@ -1103,7 +1103,12 @@ async function submitPusher() {
   if (document.getElementById('t1_skip_ssl').checked)   fd.append('skip_ssl',   '1');
 
   if (mode === 'single') {
-    fd.append('appid',   document.getElementById('t1_appid').value);
+    const _appid = document.getElementById('t1_appid').value.trim();
+    if (_appid && !/^app\d{8}$/.test(_appid)) {
+      statusEl.innerHTML = '<div class="alert alert-error">APMID must be "app" followed by exactly 8 digits (e.g. app12345678).</div>';
+      return;
+    }
+    fd.append('appid',   _appid);
     fd.append('appname', document.getElementById('t1_appname').value);
   } else {
     const f = document.getElementById('t1_appfile').files[0];
@@ -1188,7 +1193,12 @@ async function submitRodeRm() {
   fd.append('request_id', document.getElementById('t2_request_id').value);
 
   if (mode === 'single') {
-    fd.append('apmid',    document.getElementById('t2_apmid').value);
+    const _apmid = document.getElementById('t2_apmid').value.trim();
+    if (_apmid && !/^app\d{8}$/.test(_apmid)) {
+      statusEl.innerHTML = '<div class="alert alert-error">APMID must be "app" followed by exactly 8 digits (e.g. app12345678).</div>';
+      return;
+    }
+    fd.append('apmid',    _apmid);
     fd.append('app_name', document.getElementById('t2_app_name').value);
   } else {
     const f = document.getElementById('t2_appfile').files[0];
