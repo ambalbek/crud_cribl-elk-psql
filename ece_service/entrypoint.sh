@@ -1,36 +1,44 @@
 #!/bin/sh
 set -e
 
-# If AZURE_CLIENT_SECRET is set (e.g. from CyberArk Conjur), write it to config.json
+APP_DIR="$(pwd)"
+
+# ── Bootstrap config.json from base + Conjur creds ───────────────────────────
+if [ -f "$APP_DIR/config.base.json" ]; then
+  cp "$APP_DIR/config.base.json" "$APP_DIR/config.json"
+  echo "Starting from config.base.json"
+fi
+
 if [ -n "$AZURE_CLIENT_SECRET" ]; then
-  echo "Writing config.json from AZURE_CLIENT_SECRET env var..."
+  echo "Merging credentials from AZURE_CLIENT_SECRET (Conjur)..."
   printf '%s' "$AZURE_CLIENT_SECRET" | python3 -c "
 import json, sys
 raw = sys.stdin.read().strip().strip(\"'\")
 parsed = json.loads(raw)
 if isinstance(parsed, str):
-    sys.stdout.write(parsed)
+    print(parsed)
 else:
-    json.dump(parsed, sys.stdout, indent=2)
-" > /app/config.json
+    json.dump(parsed, sys.stdout)
+" | python3 "$APP_DIR/merge_creds.py" "$APP_DIR/config.json"
+elif [ -f "$APP_DIR/config-secret/config.json" ]; then
+  echo "Merging credentials from mounted secret..."
+  python3 "$APP_DIR/merge_creds.py" "$APP_DIR/config.json" < "$APP_DIR/config-secret/config.json"
 fi
 
 # Derive environment suffix from HOSTNAME
-# e.g. HOSTNAME=ece-service-deployment-dev-XXXXXXX → DEPLOY_ENV=dev
-# Service naming: <app>-service-<env> (e.g. ece-service-service-dev)
-if [ -f /app/config.json ]; then
+if [ -f "$APP_DIR/config.json" ] && echo "$HOSTNAME" | grep -q -- '-deployment-'; then
   DEPLOY_ENV=$(echo "$HOSTNAME" | sed 's/.*-deployment-//' | awk -F- '{print $1}')
   echo "Detected DEPLOY_ENV=${DEPLOY_ENV} from HOSTNAME=${HOSTNAME}"
   python3 -c "
 import sys, re
 env = sys.argv[1]
-with open('/app/config.json') as f:
+with open(sys.argv[2]) as f:
     text = f.read()
 for svc in ['cribl-service', 'ece-service', 'etn-onboarding', 'cribl-framework']:
     text = re.sub(r'http://' + svc + r':', 'http://' + svc + '-service-' + env + ':', text)
-with open('/app/config.json', 'w') as f:
+with open(sys.argv[2], 'w') as f:
     f.write(text)
-" "$DEPLOY_ENV"
+" "$DEPLOY_ENV" "$APP_DIR/config.json"
 fi
 
 exec uvicorn ece_service.main:app --host 0.0.0.0 --port 8002

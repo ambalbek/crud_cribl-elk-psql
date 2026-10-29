@@ -1,0 +1,290 @@
+{
+  "base_url": [
+    "https://cribl-leader1.company.com:9000",
+    "https://cribl-leader2.company.com:9000",
+    "https://cribl-leader3.company.com:9000",
+    "https://cribl-leader4.company.com:9000"
+  ],
+
+  "globals": {
+    "log_level": "INFO",
+    "log_format": "text",
+    "skip_ssl": true,
+    "secret_key": "local-dev-secret-key-change-in-prod",
+    "database_url": "from_conjur",
+    "elasticsearch_url": "https://openshift.es.es-azn.test.FOO.net:9243",
+    "elasticsearch_token": "",
+    "elasticsearch_username": "elastic",
+    "elasticsearch_password": "from_conjur",
+    "cribl_url": "https://cribl-azn.FOO.com",
+    "cribl_token": "from_conjur",
+    "cribl_username": "admin",
+    "cribl_password": "Ec3#2025",
+    "cribl_service_url": "http://cribl-service:8001",
+    "ece_service_url": "http://ece-service:8002",
+    "etn_onboarding_url": "http://etn-onboarding:5000",
+    "inter_service_token": "local-token"
+  },
+  "ldap": {
+    "_comment": "LDAP settings for portal lanId autocomplete. Env vars LDAP_SERVER, LDAP_BIND_DN, LDAP_BIND_PW, LDAP_BASE_DN override these.",
+    "server": "from_conjur",
+    "bind_dn": "cn=from_conjur,ou=users,ou=global,ou=hcsc,dc=adFOO,dc=net",
+    "bind_pw": "from_conjur",
+    "base_dn": "ou=global,ou=hcsc,dc=adFOO,dc=net",
+    "use_ssl": false
+  },
+  "auth": {
+    "session_lifetime_minutes": 480,
+    "roles": {
+      "admin": {
+        "description": "Full access to all pages and APIs",
+        "pages": [
+          "*"
+        ]
+      },
+      "developer": {
+        "description": "Onboarding portal, catalog, entitlements",
+        "pages": [
+          "portal",
+          "catalog",
+          "entitlements"
+        ]
+      },
+      "compliance": {
+        "description": "Compliance tracker and catalog",
+        "pages": [
+          "compliance",
+          "catalog"
+        ]
+      },
+      "user": {
+        "description": "Portal and entitlements only",
+        "pages": [
+          "portal",
+          "entitlements"
+        ]
+      }
+    },
+    "ad_group_mapping": {
+      "_comment": "Maps AD/LDAP group DNs to local roles. Used when LDAP auth is enabled.",
+      "CN=CriblAdmins,OU=Groups,DC=corp,DC=example,DC=com": "admin",
+      "CN=CriblDevelopers,OU=Groups,DC=corp,DC=example,DC=com": "developer",
+      "CN=CriblCompliance,OU=Groups,DC=corp,DC=example,DC=com": "compliance"
+    },
+    "local_admins": [
+      {
+        "username": "admin",
+        "password": "from_conjur",
+        "display_name": "Local Admin"
+      }
+    ],
+    "local_users": [
+      {
+        "username": "dev1",
+        "password": "0jE30TEzNDQzMzYsImV4cCI6MTc5",
+        "display_name": "Developer",
+        "role": "developer"
+      },
+      {
+        "username": "auditor",
+        "password": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+        "display_name": "Auditor",
+        "role": "compliance"
+      }
+    ]
+  },
+  "route_templates": {
+    "azn": "route_template_azn.json",
+    "azs": "route_template_azs.json"
+  },
+  "dest_prefixes": {
+    "azn": "hcsc-blob-storage-northcentralus",
+    "azs": "hcsc-blob-storage-southcentralus"
+  },
+  "snapshot_dir": "cribl_snapshots",
+  "min_existing_total_routes": 1,
+  "diff_lines": 3,
+  "workspaces": {
+    "dev": {
+      "worker_groups": [
+        "dazn_aro",
+        "dazn_filebeat",
+        "dazn_syslog",
+        "dwau_aro",
+        "dwau_filebeat",
+        "dwau_syslog",
+        "dazs_aro",
+        "dazs_filebeat",
+        "dazs_syslog",
+        "dftw_aro",
+        "dftw_filebeat",
+        "dftw_syslog"
+      ],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_dev.json",
+        "azs": "blob_dest_template_azs_dev.json"
+      },
+      "description": "Development workspace"
+    },
+    "test": {
+      "worker_groups": [
+        "tazn_aro",
+        "tazn_filebeat",
+        "tazn_syslog",
+        "twau_aro",
+        "twau_filebeat",
+        "twau_syslog",
+        "tazs_aro",
+        "tazs_filebeat",
+        "tazs_syslog",
+        "tftw_aro",
+        "tftw_filebeat",
+        "tftw_syslog"
+      ],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_test.json",
+        "azs": "blob_dest_template_azs_test.json"
+      },
+      "description": "Test workspace"
+    },
+    "altprod": {
+      "worker_groups": [
+        "aazn_aro",
+        "aazn_filebeat",
+        "aazn_syslog",
+        "awau_aro",
+        "awau_filebeat",
+        "awau_syslog",
+        "aazs_aro",
+        "aazs_filebeat",
+        "aazs_syslog",
+        "aftw_aro",
+        "aftw_filebeat",
+        "aftw_syslog"
+      ],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_altprod.json",
+        "azs": "blob_dest_template_azs_altprod.json"
+      },
+      "description": "Alt-Prod workspace",
+      "require_allow": true
+    },
+    "prod": {
+      "worker_groups": [
+        "pazn_aro",
+        "pazn_filebeap",
+        "pazn_syslog",
+        "pwau_aro",
+        "pwau_filebeap",
+        "pwau_syslog",
+        "pazs_aro",
+        "pazs_filebeap",
+        "pazs_syslog",
+        "pftw_aro",
+        "pftw_filebeat",
+        "pftw_syslog"
+      ],
+      "dest_templates": {
+        "azn": "blob_dest_template_azn_prod.json",
+        "azs": "blob_dest_template_azs_prod.json"
+      },
+      "description": "Production workspace",
+      "require_allow": true
+    }
+  },
+  "datastream": {
+    "index": "cribl-onboarding-requests",
+    "timeout": 30
+  },
+  "entitlement": {
+    "_comment": "Elasticsearch clusters for entitlement lookup (role mappings). Used by /entitlements page.",
+    "clusters": [
+      {
+        "name": "FR-WAU-nonProd",
+        "url": "https://forgerock.es.es.test.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "FR-AZN-nonProd",
+        "url": "https://forgerock.es.es-azn.test.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "MS-WAU-nonProd",
+        "url": "https://mulesoft.es.es.test.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "MS-AZN-nonProd",
+        "url": "https://mulesoft.es.es-azn.test.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "OPS-AZN-nonProd",
+        "url": "https://openshift.es.es-azn.test.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "FR-WAU-Prod",
+        "url": "https://forgerock.es.es.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "FR-AZN-Prod",
+        "url": "https://forgerock.es.es-azn.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "MS-WAU-Prod",
+        "url": "https://mulesoft.es.es.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "MS-AZN-Prod",
+        "url": "https://mulesoft.es.es-azn.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      },
+      {
+        "name": "OPS-AZN-Prod",
+        "url": "https://openshift.es.es-azn.FOO.net:9243",
+        "username": "elastic",
+        "password": "from_conjur"
+      }
+    ],
+    "entitlementFilter": "entitlements"
+  },
+  "iiq_url": "https://identityiq.FOO.com",
+  "dynatrace_url": "https://prodhcsc.service-now.com/sp?id=sc_cat_item&sys_id=41b9785e1b247e107add52c4604bcb4e&table=sc_cat_item&searchTerm",
+  "ece": {
+    "_comment": "Nonprod url/creds come from globals. Only prod overrides needed.",
+    "es_url_prod": "https://openshift.es.es-azn.test.FOO.com",
+    "es_token_prod": "",
+    "username": "elastic",
+    "password": "from_conjur",
+    "timeout": 60,
+    "templates_dir": "ops_rm_r_templates_output"
+  },
+  "etn_onboarding": {
+    "_comment": "Most values come from globals. Only auth config is section-specific.",
+    "token": "admin-dev-token",
+    "auth_backend": "local",
+    "auth_local_users": [
+      {
+        "username": "portal",
+        "token": "local-token",
+        "roles": [
+          "platform_admin"
+        ]
+      }
+    ]
+  }
+}

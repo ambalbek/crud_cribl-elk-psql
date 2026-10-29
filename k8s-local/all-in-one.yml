@@ -189,8 +189,7 @@ spec:
               value: /dev/null
           volumeMounts:
             - name: app-config
-              mountPath: /app/config.json
-              subPath: config.json
+              mountPath: /app/config-secret
               readOnly: true
           readinessProbe:
             httpGet:
@@ -252,8 +251,7 @@ spec:
               value: /dev/null
           volumeMounts:
             - name: app-config
-              mountPath: /app/config.json
-              subPath: config.json
+              mountPath: /app/config-secret
               readOnly: true
           readinessProbe:
             httpGet:
@@ -314,8 +312,7 @@ spec:
               value: /dev/null
           volumeMounts:
             - name: app-config
-              mountPath: /app/config.json
-              subPath: config.json
+              mountPath: /app/config-secret
               readOnly: true
           readinessProbe:
             httpGet:
@@ -376,8 +373,7 @@ spec:
               value: /dev/null
           volumeMounts:
             - name: app-config
-              mountPath: /app/config.json
-              subPath: config.json
+              mountPath: /app/config-secret
               readOnly: true
           readinessProbe:
             httpGet:
