@@ -27,8 +27,6 @@ COPY cribl_logger.py ./cribl_logger.py
 COPY cribl_utils.py  ./cribl_utils.py
 COPY otel_setup.py       ./otel_setup.py
 COPY config_resolver.py  ./config_resolver.py
-COPY merge_creds.py      ./merge_creds.py
-COPY config.base.json    ./config.base.json
 
 # ── Service application code ─────────────────────────────────────────────────
 COPY ece_service/ ./ece_service/

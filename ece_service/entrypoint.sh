@@ -1,30 +1,24 @@
 #!/bin/sh
 set -e
 
-# ── Bootstrap config.json from base + creds ──────────────────────────────────
-if [ -f /app/config.base.json ]; then
-  cp /app/config.base.json /app/config.json
-  echo "Starting from config.base.json (no creds)"
-fi
-
+# If AZURE_CLIENT_SECRET is set (e.g. from CyberArk Conjur), write it to config.json
 if [ -n "$AZURE_CLIENT_SECRET" ]; then
-  echo "Merging credentials from AZURE_CLIENT_SECRET (Conjur)..."
+  echo "Writing config.json from AZURE_CLIENT_SECRET env var..."
   printf '%s' "$AZURE_CLIENT_SECRET" | python3 -c "
 import json, sys
 raw = sys.stdin.read().strip().strip(\"'\")
 parsed = json.loads(raw)
 if isinstance(parsed, str):
-    print(parsed)
+    sys.stdout.write(parsed)
 else:
-    json.dump(parsed, sys.stdout)
-" | python3 /app/merge_creds.py
-elif [ -f /app/config-secret/config.json ]; then
-  echo "Merging credentials from mounted secret..."
-  python3 /app/merge_creds.py < /app/config-secret/config.json
+    json.dump(parsed, sys.stdout, indent=2)
+" > /app/config.json
 fi
 
 # Derive environment suffix from HOSTNAME
-if [ -f /app/config.json ] && echo "$HOSTNAME" | grep -q -- '-deployment-'; then
+# e.g. HOSTNAME=ece-service-deployment-dev-XXXXXXX → DEPLOY_ENV=dev
+# Service naming: <app>-service-<env> (e.g. ece-service-service-dev)
+if [ -f /app/config.json ]; then
   DEPLOY_ENV=$(echo "$HOSTNAME" | sed 's/.*-deployment-//' | awk -F- '{print $1}')
   echo "Detected DEPLOY_ENV=${DEPLOY_ENV} from HOSTNAME=${HOSTNAME}"
   python3 -c "

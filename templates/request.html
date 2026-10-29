@@ -399,8 +399,7 @@
                 <div class="grid">
                   <div class="field">
                     <label for="apmid">apmId <span class="req">*</span></label>
-                    <input type="text" id="apmid" placeholder="e.g. app12345678" pattern="^app\d{8}$" autocomplete="off" />
-                    <p class="hint">Must start with "app" followed by exactly 8 digits.</p>
+                    <input type="text" id="apmid" placeholder="e.g. APP001" autocomplete="off" />
                   </div>
                   <div class="field">
                     <label for="appname">appname <span class="req">*</span></label>
@@ -836,8 +835,6 @@
     if (!firstName)        errors.push('First Name is required.');
     if (!lastName)         errors.push('Last Name is required.');
     if (!appId)            errors.push('apmId is required.');
-    else if (!/^app\d{8}$/.test(appId))
-                           errors.push('apmId must start with "app" followed by exactly 8 digits (e.g. app12345678).');
     if (!appName)          errors.push('appname is required.');
     else if (!/^\w+$/.test(appName))
                            errors.push('App Name must be a single word using only letters, numbers, and underscores.');
@@ -1022,9 +1019,7 @@
       if (!emailTags.length)                fail(wrap('f-emails'), 'Add at least one app email.');
     }
     if (n === 2) {
-      const _aid = wrap('apmid').value.trim();
-      if (!_aid)                          fail(fieldOf('apmid'), 'apmId is required.');
-      else if (!/^app\d{8}$/.test(_aid))  fail(fieldOf('apmid'), 'apmId must be "app" + 8 digits (e.g. app12345678).');
+      if (!wrap('apmid').value.trim())   fail(fieldOf('apmid'), 'apmId is required.');
       const an = wrap('appname').value.trim();
       if (!an)                           fail(fieldOf('appname'), 'appname is required.');
       else if (!/^\w+$/.test(an))        fail(fieldOf('appname'), 'Single word — letters, numbers, underscores only.');

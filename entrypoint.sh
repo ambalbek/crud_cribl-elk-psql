@@ -1,32 +1,18 @@
 #!/bin/sh
 set -e
 
-# ── Bootstrap config.json ────────────────────────────────────────────────────
-# Start from config.base.json (baked into the image, contains no credentials),
-# then merge only credential fields from:
-#   1. AZURE_CLIENT_SECRET env var (Conjur — prod/ARO)
-#   2. Mounted K8s secret at /app/config-secret/config.json
-# The secret source may contain the full config, but only cred keys are used.
-if [ -f /app/config.base.json ]; then
-  cp /app/config.base.json /app/config.json
-  echo "Starting from config.base.json (no creds)"
-fi
-
-# Determine the secrets source and merge creds
+# If AZURE_CLIENT_SECRET is set (e.g. from CyberArk Conjur), write it to config.json
 if [ -n "$AZURE_CLIENT_SECRET" ]; then
-  echo "Merging credentials from AZURE_CLIENT_SECRET (Conjur)..."
+  echo "Writing config.json from AZURE_CLIENT_SECRET env var..."
   printf '%s' "$AZURE_CLIENT_SECRET" | python3 -c "
 import json, sys
 raw = sys.stdin.read().strip().strip(\"'\")
 parsed = json.loads(raw)
 if isinstance(parsed, str):
-    print(parsed)
+    sys.stdout.write(parsed)
 else:
-    json.dump(parsed, sys.stdout)
-" | python3 /app/merge_creds.py
-elif [ -f /app/config-secret/config.json ]; then
-  echo "Merging credentials from mounted secret..."
-  python3 /app/merge_creds.py < /app/config-secret/config.json
+    json.dump(parsed, sys.stdout, indent=2)
+" > /app/config.json
 fi
 
 # Derive environment suffix from HOSTNAME
