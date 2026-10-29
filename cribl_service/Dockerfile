@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     OPENSSL_CONF=/dev/null
 
-WORKDIR /app
+WORKDIR /opt/app-root/src
 
 # ── Dependencies (separate layer for cache efficiency) ───────────────────────
 COPY cribl_service/requirements.txt ./cribl_service/requirements.txt
@@ -30,12 +30,11 @@ COPY config.base.json    ./config.base.json
 
 # ── Service application code ─────────────────────────────────────────────────
 COPY cribl_service/ ./cribl_service/
-
-RUN chmod +x /app/cribl_service/entrypoint.sh
+COPY --chmod=755 cribl_service/entrypoint.sh ./cribl_service/entrypoint.sh
 
 EXPOSE 8001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
 
-ENTRYPOINT ["/app/cribl_service/entrypoint.sh"]
+ENTRYPOINT ["/opt/app-root/src/cribl_service/entrypoint.sh"]

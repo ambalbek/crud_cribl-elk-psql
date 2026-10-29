@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     OPENSSL_CONF=/dev/null
 
-WORKDIR /app
+WORKDIR /opt/app-root/src
 
 # ── Dependencies (separate layer for cache efficiency) ───────────────────────
 COPY ece_service/requirements.txt ./ece_service/requirements.txt
@@ -32,12 +32,11 @@ COPY config.base.json    ./config.base.json
 
 # ── Service application code ─────────────────────────────────────────────────
 COPY ece_service/ ./ece_service/
-
-RUN chmod +x /app/ece_service/entrypoint.sh
+COPY --chmod=755 ece_service/entrypoint.sh ./ece_service/entrypoint.sh
 
 EXPOSE 8002
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')" || exit 1
 
-ENTRYPOINT ["/app/ece_service/entrypoint.sh"]
+ENTRYPOINT ["/opt/app-root/src/ece_service/entrypoint.sh"]
