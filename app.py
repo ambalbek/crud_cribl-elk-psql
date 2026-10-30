@@ -1286,7 +1286,9 @@ def portal_submit():
                 except (ValueError, TypeError):
                     err = resp.text[:400]
                 log.error("etn_onboarding intake failed — %d: %s", resp.status_code, err)
-                return jsonify({"errors": err if isinstance(err, list) else [err]}), resp.status_code
+                # Don't pass through 401/403 from inter-service call — that's an internal config issue, not user auth
+                status_out = 502 if resp.status_code in (401, 403) else resp.status_code
+                return jsonify({"errors": err if isinstance(err, list) else [err]}), status_out
 
             result = resp.json()
             etn_request_id = result.get("id") or result.get("apm_id")
