@@ -37,7 +37,7 @@ def _cfg_defaults() -> dict[str, str]:
     cfg = _load_config_json()
     creds = cfg.get("credentials", {})
     return {
-        "CRIBL_BASE_URL": cfg.get("base_url", ""),
+        "CRIBL_BASE_URL": cfg.get("base_url", [""])[0] if isinstance(cfg.get("base_url"), list) else cfg.get("base_url", ""),
         "CRIBL_TOKEN": creds.get("token", ""),
         "CRIBL_USERNAME": creds.get("username", ""),
         "CRIBL_PASSWORD": creds.get("password", ""),

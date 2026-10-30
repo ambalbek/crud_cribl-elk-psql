@@ -1,5 +1,7 @@
 # Credentials & local config — never commit these
 config.json
+config.*.json
+!config.base.json
 entitlement/config.json
 .env
 *.env
