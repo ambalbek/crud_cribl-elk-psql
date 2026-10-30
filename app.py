@@ -1300,10 +1300,14 @@ def portal_submit():
             log.error("etn_onboarding intake error — %s", exc.__class__.__name__)
             return jsonify({"errors": [f"Onboarding service unavailable: {exc}"]}), 502
 
-        # Also index to ES so the catalog and admin pages stay populated
-        now = datetime.now(timezone.utc)
-        doc = {
-            "@timestamp":         now.isoformat(),
+        # Return immediately — etn_onboarding is the source of truth.
+        # ES index + PSQL are supplementary and run after the response.
+        _catalog_cache["data"] = None
+        _catalog_cache["ts"]   = 0.0
+
+        # Schedule non-blocking ES + PSQL writes via after_this_request
+        _submit_doc = {
+            "@timestamp":         datetime.now(timezone.utc).isoformat(),
             "request_id":         etn_request_id,
             "lan_id":             lan_id,
             "first_name":         first_name,
@@ -1329,60 +1333,61 @@ def portal_submit():
             "routes":             0,
             "status":             "pending",
         }
-        try:
-            es_id = es_index(doc, config)
-            log.info("ES index OK — request_id=%s  es_id=%s", etn_request_id, es_id)
-        except Exception as exc:
-            # Non-fatal: etn_onboarding is the source of truth, ES is for catalog
-            log.warning("ES index failed (non-fatal) — %s: %s", type(exc).__name__, exc)
+        _submit_config = config
+        _submit_req_id = etn_request_id
 
-        # Also persist to local PostgreSQL if available (for legacy admin page)
-        # Truncate UUID to fit legacy VARCHAR(30) column
-        legacy_req_id = f"REQ-{now.strftime('%Y%m%d')}-{etn_request_id[:8].upper()}"
-        if _db_url:
+        import threading
+        def _background_index():
             try:
-                existing = _find_onboarding_row(app_id)
-                if existing:
-                    if elk_capacity and not existing.elk_capacity:
-                        existing.elk_capacity = elk_capacity
-                        db.session.commit()
-                        log.info("PSQL elk_capacity updated — apm_id=%s", app_id)
-                    else:
-                        log.info("PSQL skip — apm_id=%s already exists (id=%s)", app_id, existing.id)
-                else:
-                    import uuid
-                    row = OnboardingRequest(
-                        id=uuid.UUID(etn_request_id) if etn_request_id else uuid.uuid4(),
-                        lan_id=lan_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        requestor_name=req_name,
-                        requestor_email=app_emails[0] if app_emails else "",
-                        apm_id=app_id,
-                        app_name=app_name,
-                        team=app_team or "",
-                        ays_group=ays_group,
-                        app_emails=app_emails,
-                        region=region,
-                        environment=environments,
-                        log_destinations=log_dests,
-                        log_types=log_types,
-                        entitlement_groups=groups,
-                        data_type=data_type,
-                        dest=dest,
-                        ilm_tier=ilm_tier,
-                        elk_capacity=elk_capacity if elk_capacity else None,
-                        status="intake_pending",
-                    )
-                    db.session.add(row)
-                    db.session.commit()
-                    log.info("PSQL insert OK — request_id=%s", etn_request_id)
+                es_id = es_index(_submit_doc, _submit_config)
+                log.info("ES index OK — request_id=%s  es_id=%s", _submit_req_id, es_id)
             except Exception as exc:
-                db.session.rollback()
-                log.warning("PSQL insert failed (non-fatal) — %s: %s", type(exc).__name__, exc)
+                log.warning("ES index failed (non-fatal) — %s: %s", type(exc).__name__, exc)
 
-        _catalog_cache["data"] = None
-        _catalog_cache["ts"]   = 0.0
+            if _db_url:
+                try:
+                    with app.app_context():
+                        existing = _find_onboarding_row(app_id)
+                        if existing:
+                            if elk_capacity and not existing.elk_capacity:
+                                existing.elk_capacity = elk_capacity
+                                db.session.commit()
+                                log.info("PSQL elk_capacity updated — apm_id=%s", app_id)
+                            else:
+                                log.info("PSQL skip — apm_id=%s already exists (id=%s)", app_id, existing.id)
+                        else:
+                            import uuid
+                            row = OnboardingRequest(
+                                id=uuid.UUID(_submit_req_id) if _submit_req_id else uuid.uuid4(),
+                                lan_id=lan_id,
+                                first_name=first_name,
+                                last_name=last_name,
+                                requestor_name=req_name,
+                                requestor_email=app_emails[0] if app_emails else "",
+                                apm_id=app_id,
+                                app_name=app_name,
+                                team=app_team or "",
+                                ays_group=ays_group,
+                                app_emails=app_emails,
+                                region=region,
+                                environment=environments,
+                                log_destinations=log_dests,
+                                log_types=log_types,
+                                entitlement_groups=groups,
+                                data_type=data_type,
+                                dest=dest,
+                                ilm_tier=ilm_tier,
+                                elk_capacity=elk_capacity if elk_capacity else None,
+                                status="intake_pending",
+                            )
+                            db.session.add(row)
+                            db.session.commit()
+                            log.info("PSQL insert OK — request_id=%s", _submit_req_id)
+                except Exception as exc:
+                    db.session.rollback()
+                    log.warning("PSQL insert failed (non-fatal) — %s: %s", type(exc).__name__, exc)
+
+        threading.Thread(target=_background_index, daemon=True).start()
         return jsonify({"request_id": etn_request_id})
 
     # ── Fallback: direct insert (legacy mode when ETN_ONBOARDING_URL not set) ─
