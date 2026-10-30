@@ -63,8 +63,8 @@ def _early_cfg() -> dict:
     try:
         if CONFIG_PATH.exists():
             return resolve_config(json.loads(CONFIG_PATH.read_text()))
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[WARN] Failed to load config.json at import: {exc}")
     return {}
 
 _boot_cfg = _early_cfg()
@@ -82,7 +82,8 @@ def _ldap_cfg():
     """Return resolved LDAP settings (config.json + env var override)."""
     try:
         cfg = load_config().get("ldap", {})
-    except Exception:
+    except Exception as exc:
+        log.warning("Failed to load LDAP config: %s", exc)
         cfg = {}
     return {
         "server":   os.environ.get("LDAP_SERVER",   cfg.get("server", "")),
@@ -109,8 +110,8 @@ def setup_app_logging(app: Flask) -> logging.Logger:
     try:
         if CONFIG_PATH.exists():
             _cfg_log = json.loads(CONFIG_PATH.read_text())
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[WARN] setup_app_logging — config read failed: {exc}")
     log_level = (os.environ.get("LOG_LEVEL") or _cfg_log.get("log_level", "INFO")).upper()
     if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         log_level = "INFO"
@@ -368,7 +369,8 @@ def _get_role_pages(role: str) -> set[str]:
     """Return the set of page names a role can access."""
     try:
         config = load_config()
-    except Exception:
+    except Exception as exc:
+        log.warning("_get_role_access_pages — config load failed: %s", exc)
         config = {}
     roles_cfg = config.get("auth", {}).get("roles", {})
     role_def = roles_cfg.get(role, {})
@@ -494,7 +496,8 @@ def es_index(doc: dict, config: dict) -> str:
         timeout=timeout,
     )
     resp.raise_for_status()
-    return resp.json().get("_id", "unknown")
+    body = resp.json()
+    return body.get("_id", "unknown") if isinstance(body, dict) else "unknown"
 
 
 def _find_onboarding_row(identifier: str):
@@ -504,7 +507,8 @@ def _find_onboarding_row(identifier: str):
         return row
     try:
         return db.session.get(OnboardingRequest, identifier)
-    except Exception:
+    except Exception as exc:
+        log.debug("_find_onboarding_row lookup failed for %s: %s", identifier, exc)
         return None
 
 
@@ -704,10 +708,15 @@ def fetch_role_mappings(cluster, global_skip_ssl=None):
     if global_skip_ssl is None:
         try:
             global_skip_ssl = load_config().get("skip_ssl", False)
-        except Exception:
+        except Exception as exc:
+            log.warning("fetch_role_mappings — config load failed: %s", exc)
             global_skip_ssl = False
     skip_ssl = cluster.get('skip_ssl', global_skip_ssl)
-    url = f"{cluster['url'].rstrip('/')}/_security/role_mapping"
+    cluster_url = cluster.get('url', '')
+    if not isinstance(cluster_url, str) or not cluster_url:
+        log.warning("fetch_role_mappings — invalid or missing URL for cluster %s", cluster.get('name'))
+        return {}
+    url = f"{cluster_url.rstrip('/')}/_security/role_mapping"
     log.info("Cluster [%s] — requesting %s", cluster['name'], url)
     start = time.time()
     try:
@@ -720,7 +729,8 @@ def fetch_role_mappings(cluster, global_skip_ssl=None):
         elapsed = time.time() - start
         log.info("Cluster [%s] — %d response in %.2fs", cluster['name'], resp.status_code, elapsed)
         resp.raise_for_status()
-        return resp.json()
+        body = resp.json()
+        return body if isinstance(body, dict) else {}
     except http_client.exceptions.ConnectTimeout:
         log.error("Cluster [%s] — connection timed out after %.2fs to %s", cluster['name'], time.time() - start, url)
         raise
@@ -904,7 +914,8 @@ def _cribl_base_and_headers(
         except http_client.exceptions.ConnectionError as exc:
             raise RuntimeError(f"Cannot connect to Cribl at {base_url}: {exc}")
         if login_resp.status_code < 400:
-            bearer_token = login_resp.json().get("token", "")
+            login_body = login_resp.json()
+            bearer_token = login_body.get("token", "") if isinstance(login_body, dict) else ""
             if bearer_token:
                 headers["Authorization"] = f"Bearer {bearer_token}"
             else:
@@ -1108,7 +1119,8 @@ def login_submit():
     # No password — allow as regular user; check if a local_users entry exists with a role
     try:
         config = load_config()
-    except Exception:
+    except Exception as exc:
+        log.warning("login — config load failed: %s", exc)
         config = {}
     matched_role = "user"
     for lu in config.get("auth", {}).get("local_users", []):
@@ -1521,7 +1533,8 @@ def portal_ldap_lookup():
         log.error("LDAP search failed for lan_id=%s: %s", lan_id, exc)
         try:
             conn.unbind()
-        except Exception:
+        except Exception as unbind_exc:
+            log.debug("LDAP unbind failed: %s", unbind_exc)
             pass
         return jsonify({"error": "LDAP search failed"}), 500
 
@@ -2000,10 +2013,15 @@ def patch_destination():
             verify=not skip_ssl,
         )
         if get_st >= 400:
-            return jsonify({"errors": [f"Failed to fetch destination: {current}"]}), get_st
+            detail = current.get("message", current.get("raw", str(current))) if isinstance(current, dict) else str(current)
+            return jsonify({"errors": [f"Failed to fetch destination ({get_st}): {detail}"]}), get_st
+        if not isinstance(current, dict):
+            return jsonify({"errors": ["Unexpected response from Cribl — expected JSON object"]}), 502
         # Unwrap if needed (cribl_service returns {items:[...]} or direct object)
-        if isinstance(current, dict) and "items" in current:
+        if "items" in current:
             current = current["items"][0] if current["items"] else current
+        if not isinstance(current, dict):
+            return jsonify({"errors": ["Destination object is not a valid JSON object"]}), 502
         merged = {**current, **patch_fields}
         body, status = _svc_patch(
             base,
@@ -2047,9 +2065,14 @@ def list_destinations(worker_group: str):
     except Exception as exc:
         log.error("list-destinations failed: %s", exc)
         return jsonify({"error": str(exc)}), 500
+    if status >= 400:
+        detail = body.get("message", body.get("raw", str(body))) if isinstance(body, dict) else str(body)
+        return jsonify({"error": f"Failed to list destinations ({status}): {detail}"}), status
     # Normalize response: ensure {items: [...]} format for the UI
     if isinstance(body, list):
         body = {"items": body}
+    elif isinstance(body, dict) and "items" not in body:
+        body = {"items": []}
     return jsonify(body), status
 
 
@@ -2107,7 +2130,13 @@ def bulk_patch_destinations():
         log.error("bulk-patch list failed: %s", exc)
         return jsonify({"errors": [f"Failed to list destinations: {exc}"]}), 500
 
-    items = all_dests.get("items", all_dests) if isinstance(all_dests, dict) else all_dests
+    if status >= 400:
+        detail = all_dests.get("message", all_dests.get("raw", str(all_dests))) if isinstance(all_dests, dict) else str(all_dests)
+        return jsonify({"errors": [f"Failed to list destinations ({status}): {detail}"]}), status
+
+    items = all_dests.get("items", []) if isinstance(all_dests, dict) else []
+    if not isinstance(items, list):
+        items = []
 
     # Apply filters
     if explicit_ids:
@@ -2128,7 +2157,12 @@ def bulk_patch_destinations():
 
     results = []
     for dest in items:
+        if not isinstance(dest, dict):
+            results.append({"id": str(dest), "status": 400, "ok": False, "error": "Invalid destination object"})
+            continue
         dest_id = dest.get("id")
+        if not dest_id:
+            continue
         # Cribl requires the full object on PATCH — merge patch_fields
         # into the existing destination so required fields (id, type, …)
         # are always present.
@@ -2492,15 +2526,20 @@ def _fetch_ilm_tier_stateless(
         )
         if resp.status_code != 200:
             return "none"
+        ilm_body = resp.json()
+        indices = ilm_body.get("indices", {}) if isinstance(ilm_body, dict) else {}
+        if not isinstance(indices, dict):
+            return "none"
         phases = {
             info.get("phase")
-            for info in resp.json().get("indices", {}).values()
-            if info.get("phase")
+            for info in indices.values()
+            if isinstance(info, dict) and info.get("phase")
         }
         if not phases:
             return "none"
         return "tiered" if len(phases) > 1 else phases.pop()
-    except Exception:
+    except Exception as exc:
+        log.debug("ILM tier check failed for %s: %s", appname, exc)
         return "none"
 
 
@@ -2549,7 +2588,12 @@ def _build_catalog(config: dict) -> list:
                 timeout=10,
             )
             if etn_resp.status_code < 400:
-                for r in etn_resp.json():
+                etn_data = etn_resp.json()
+                if not isinstance(etn_data, list):
+                    etn_data = etn_data.get("items", []) if isinstance(etn_data, dict) else []
+                for r in etn_data:
+                    if not isinstance(r, dict):
+                        continue
                     apm = r.get("apm_id", "")
                     if apm and apm not in seen:
                         seen[apm] = {
@@ -2629,9 +2673,10 @@ def _build_catalog(config: dict) -> list:
                         timeout=30,
                     )
                     if auth_r.status_code == 200:
-                        cribl_token = auth_r.json().get("token", "")
+                        auth_body = auth_r.json()
+                        cribl_token = auth_body.get("token", "") if isinstance(auth_body, dict) else ""
                     else:
-                        log.warning("catalog — Cribl auth failed ws=%s: %d", ws_name, auth_r.status_code)
+                        log.warning("catalog — Cribl auth failed ws=%s: %d %s", ws_name, auth_r.status_code, auth_r.text[:100])
                         continue
                 except Exception as exc:
                     log.warning("catalog — Cribl auth error ws=%s: %s", ws_name, exc)
@@ -2649,8 +2694,12 @@ def _build_catalog(config: dict) -> list:
                     log.debug("catalog — wg %s not found in ws %s, skipping", wg, ws_name)
                     continue
                 if r.status_code == 200:
-                    cribl_routes_cache[(ws_name, wg)] = r.json()
-                    log.info("catalog — routes fetched ws=%s wg=%s", ws_name, wg)
+                    routes_body = r.json()
+                    if isinstance(routes_body, dict):
+                        cribl_routes_cache[(ws_name, wg)] = routes_body
+                        log.info("catalog — routes fetched ws=%s wg=%s", ws_name, wg)
+                    else:
+                        log.warning("catalog — unexpected routes response type ws=%s wg=%s", ws_name, wg)
                 else:
                     log.warning("catalog — routes %d ws=%s wg=%s", r.status_code, ws_name, wg)
             except Exception as exc:
@@ -2678,7 +2727,8 @@ def _build_catalog(config: dict) -> list:
                 name = futs[fut]
                 try:
                     ilm_map[name] = fut.result()
-                except Exception:
+                except Exception as exc:
+                    log.debug("ILM future failed for %s: %s", name, exc)
                     ilm_map[name] = "none"
 
     # ── 5. Assemble per-app catalog items ─────────────────────────────────────
@@ -2770,7 +2820,8 @@ def _build_catalog(config: dict) -> list:
 def catalog_page():
     try:
         config = load_config()
-    except Exception:
+    except Exception as exc:
+        log.warning("catalog_page — config load failed: %s", exc)
         config = {}
     workspaces = {
         k: v for k, v in config.get("workspaces", {}).items()
@@ -3032,7 +3083,12 @@ def api_onboarding_requests():
                 timeout=10,
             )
             if resp.status_code < 400:
-                for r in resp.json():
+                _resp_data = resp.json()
+                if not isinstance(_resp_data, list):
+                    _resp_data = _resp_data.get("items", []) if isinstance(_resp_data, dict) else []
+                for r in _resp_data:
+                    if not isinstance(r, dict):
+                        continue
                     if r.get("apm_id") not in seen_apms:
                         form_data = r.get("form_data") or {}
                         results.append({
@@ -3148,7 +3204,8 @@ def api_catalog_delete(apm_id):
                         timeout=30,
                     )
                     if auth_r.status_code == 200:
-                        cribl_token = auth_r.json().get("token", "")
+                        _auth_body = auth_r.json()
+                        cribl_token = _auth_body.get("token", "") if isinstance(_auth_body, dict) else ""
                     else:
                         results["actions"].append({
                             "type": "cribl_auth", "ws": ws_name,
@@ -3207,8 +3264,11 @@ def api_catalog_delete(apm_id):
             try:
                 out_r = ws_sess.get(outputs_url, timeout=30)
                 if out_r.status_code == 200:
-                    out_items = out_r.json().get("items", [])
+                    _out_body = out_r.json()
+                    out_items = _out_body.get("items", []) if isinstance(_out_body, dict) else []
                     for item in out_items:
+                        if not isinstance(item, dict):
+                            continue
                         out_id = item.get("id", "")
                         if apmid_lower in out_id.lower():
                             dest_action = {

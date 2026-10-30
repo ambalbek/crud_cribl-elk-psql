@@ -137,7 +137,7 @@ def provision(
     if pack:
         pack_result = _install_pack_if_needed(client, worker_group, pack, dry_run)
         pack_id = (pack.get("pack_id") or "").strip()
-        if pack_id:
+        if pack_id and isinstance(route_template, dict):
             route_template = {**route_template, "pipeline": pack_id}
 
     # Provision routes + destinations with retry

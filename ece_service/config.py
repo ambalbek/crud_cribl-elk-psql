@@ -26,8 +26,8 @@ def _load_root_config() -> dict:
     try:
         if CONFIG_PATH.exists():
             return resolve_config(json.loads(CONFIG_PATH.read_text()))
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to load config.json: %s", exc)
     return {}
 
 
