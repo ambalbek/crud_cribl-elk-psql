@@ -410,7 +410,10 @@ def role_required(*page_names: str):
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
+            is_api = request.path.startswith("/cribl/api/") or request.is_json
             if not session.get("username"):
+                if is_api:
+                    return jsonify({"error": "Session expired — please log in again"}), 401
                 return redirect(url_for("login_page", next=request.path))
             role = session.get("role", "user")
             role_pages = _get_role_pages(role)
@@ -419,6 +422,8 @@ def role_required(*page_names: str):
             if not any(p in role_pages for p in page_names):
                 log.warning("RBAC denied: user=%s role=%s required=%s path=%s",
                             session.get("username"), role, page_names, request.path)
+                if is_api:
+                    return jsonify({"error": "Insufficient permissions"}), 403
                 return redirect(url_for("login_page", next=request.path))
             return f(*args, **kwargs)
         return decorated

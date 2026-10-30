@@ -904,9 +904,20 @@
     })
     .then(res => {
       console.log('[portal] submit response — status:', res.status, 'url:', res.url);
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        if (res.status === 401 || res.url.includes('/login')) {
+          return { status: 401, data: { errors: ['Session expired — please log in again.'] } };
+        }
+        return { status: res.status, data: { errors: ['Server returned an unexpected response. Please try again.'] } };
+      }
       return res.json().then(data => ({ status: res.status, data }));
     })
     .then(({ status, data }) => {
+      if (status === 401) {
+        window.location.href = '/cribl/login?next=/cribl/portal';
+        return;
+      }
       if (data.errors) {
         console.error('[portal] server errors:', data.errors);
         const errArr = Array.isArray(data.errors) ? data.errors : [data.errors];
