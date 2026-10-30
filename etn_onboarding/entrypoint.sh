@@ -53,16 +53,63 @@ try:
     c = resolve_config(json.load(open('$APP_DIR/config.json')))
 except Exception:
     c = json.load(open('$APP_DIR/config.json'))
-print(c.get('etn_onboarding',{}).get('database_url','') or c.get('globals',{}).get('database_url',''))
-" 2>/dev/null || true)
+url = c.get('etn_onboarding',{}).get('database_url','') or c.get('globals',{}).get('database_url','')
+if url == 'from_conjur' or not url:
+    print('', end='')
+    sys.stderr.write('WARNING: database_url is empty or still from_conjur — Conjur merge may have failed\n')
+else:
+    print(url, end='')
+" 2>&1)
   export DATABASE_URL
+  if [ -n "$DATABASE_URL" ]; then
+    echo "DATABASE_URL resolved from config.json: ${DATABASE_URL%@*}@***"
+  else
+    echo "WARNING: DATABASE_URL not resolved — DB setup will be skipped"
+  fi
 fi
 
 if [ -n "$DATABASE_URL" ]; then
+  # Ensure the database exists — connect to 'postgres' default DB and create if missing
+  echo "Ensuring database exists..."
+  python -c "
+import os, psycopg2
+from urllib.parse import urlparse
+url = urlparse(os.environ['DATABASE_URL'])
+db_name = url.path.lstrip('/')
+# Connect to default 'postgres' DB to check/create
+try:
+    conn = psycopg2.connect(
+        host=url.hostname, port=url.port or 5432,
+        user=url.username, password=url.password,
+        dbname='postgres'
+    )
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute('SELECT 1 FROM pg_database WHERE datname = %s', (db_name,))
+    if not cur.fetchone():
+        cur.execute(f'CREATE DATABASE \"{db_name}\"')
+        print(f'Database \"{db_name}\" created.')
+    else:
+        print(f'Database \"{db_name}\" already exists.')
+    cur.close()
+    conn.close()
+except Exception as e:
+    print(f'DB create check failed (will retry connection): {e}')
+" 2>&1 || true
+
   echo "Waiting for Postgres (max 120s)..."
   PG_RETRIES=0
   PG_MAX=60
-  until python -c "import os, psycopg2; psycopg2.connect(os.environ['DATABASE_URL'])" 2>/dev/null; do
+  until python -c "
+import os, psycopg2
+url = os.environ['DATABASE_URL']
+# Append connect_timeout if not present
+if 'connect_timeout' not in url:
+    sep = '&' if '?' in url else '?'
+    url = url + sep + 'connect_timeout=5'
+psycopg2.connect(url)
+print('Connected.')
+" 2>&1; do
     PG_RETRIES=$((PG_RETRIES + 1))
     if [ "$PG_RETRIES" -ge "$PG_MAX" ]; then
       echo "FATAL: Postgres not reachable after ${PG_MAX} attempts (120s). DATABASE_URL=${DATABASE_URL%@*}@***"
