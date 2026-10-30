@@ -841,11 +841,14 @@ def _cribl_base_and_headers(
     ws_base = (workspace_cfg or {}).get("base_url", "")
     if isinstance(ws_base, list):
         ws_base = ws_base[0] if ws_base else ""
+    _global_base = config.get("base_url") or ""
+    if isinstance(_global_base, list):
+        _global_base = _global_base[0] if _global_base else ""
     base_url = (
         cribl_url.rstrip("/")
         or CRIBL_SERVICE_URL
         or ws_base.rstrip("/")
-        or (config.get("base_url") or "").rstrip("/")
+        or _global_base.rstrip("/")
     )
     if not base_url:
         raise RuntimeError(
