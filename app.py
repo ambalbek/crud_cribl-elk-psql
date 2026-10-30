@@ -1461,16 +1461,20 @@ def portal_submit():
             log.error("PSQL insert failed — %s: %s", type(exc).__name__, exc)
             return jsonify({"errors": [f"Failed to store request in database: {exc}"]}), 500
 
-    # ── Persist to Elasticsearch ──────────────────────────────────────────────
-    try:
-        log.info("indexing to ES — index=%s  request_id=%s",
-                 config.get("datastream", {}).get("index", "cribl-onboarding-requests"),
-                 request_id)
-        es_id = es_index(doc, config)
-        log.info("ES index OK — request_id=%s  es_id=%s", request_id, es_id)
-    except Exception as exc:
-        log.error("ES index failed — %s: %s", type(exc).__name__, exc)
-        return jsonify({"errors": [f"Failed to store request: {exc}"]}), 500
+    # ── Index to Elasticsearch in background (non-blocking) ─────────────────
+    _legacy_doc = doc
+    _legacy_config = config
+    _legacy_req_id = request_id
+
+    import threading
+    def _legacy_es_index():
+        try:
+            es_id = es_index(_legacy_doc, _legacy_config)
+            log.info("ES index OK — request_id=%s  es_id=%s", _legacy_req_id, es_id)
+        except Exception as exc:
+            log.warning("ES index failed (non-fatal) — %s: %s", type(exc).__name__, exc)
+
+    threading.Thread(target=_legacy_es_index, daemon=True).start()
 
     _catalog_cache["data"] = None
     _catalog_cache["ts"]   = 0.0

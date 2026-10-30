@@ -59,9 +59,16 @@ print(c.get('etn_onboarding',{}).get('database_url','') or c.get('globals',{}).g
 fi
 
 if [ -n "$DATABASE_URL" ]; then
-  echo "Waiting for Postgres..."
+  echo "Waiting for Postgres (max 120s)..."
+  PG_RETRIES=0
+  PG_MAX=60
   until python -c "import os, psycopg2; psycopg2.connect(os.environ['DATABASE_URL'])" 2>/dev/null; do
-    echo "Postgres not ready, retrying in 2s..."
+    PG_RETRIES=$((PG_RETRIES + 1))
+    if [ "$PG_RETRIES" -ge "$PG_MAX" ]; then
+      echo "FATAL: Postgres not reachable after ${PG_MAX} attempts (120s). DATABASE_URL=${DATABASE_URL%@*}@***"
+      exit 1
+    fi
+    echo "Postgres not ready, retrying in 2s... ($PG_RETRIES/$PG_MAX)"
     sleep 2
   done
   echo "Postgres is ready."
