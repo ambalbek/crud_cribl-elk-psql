@@ -60,6 +60,8 @@ if url == 'from_conjur' or not url:
 else:
     print(url, end='')
 " 2>&1)
+  # Strip whitespace, quotes, \r\n that Conjur may inject
+  DATABASE_URL=$(echo "$DATABASE_URL" | tr -d '\r\n' | sed "s/^['\"]//;s/['\"]$//")
   export DATABASE_URL
   if [ -n "$DATABASE_URL" ]; then
     echo "DATABASE_URL resolved from config.json: ${DATABASE_URL%@*}@***"
@@ -74,7 +76,7 @@ if [ -n "$DATABASE_URL" ]; then
   python -c "
 import os, psycopg2
 from psycopg2.extensions import parse_dsn
-db_url = os.environ['DATABASE_URL']
+db_url = os.environ['DATABASE_URL'].strip().strip(\"'\").strip('\"')
 params = parse_dsn(db_url)
 db_name = params['dbname']
 params['dbname'] = 'postgres'
