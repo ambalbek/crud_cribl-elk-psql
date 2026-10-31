@@ -73,22 +73,13 @@ if [ -n "$DATABASE_URL" ]; then
   echo "Ensuring database exists..."
   python -c "
 import os, psycopg2
+from psycopg2.extensions import parse_dsn
 db_url = os.environ['DATABASE_URL']
-# URL: postgresql://USERNAME10:#pass:word@@host:5432/dbname
-# Username is exactly 10 chars after ://
-# Password has special chars including : and @
-# dbname is after the last /
-after_scheme = db_url.split('://', 1)[1]       # USERNAME10:#pass:word@@host:5432/dbname
-user = after_scheme[:10]                         # USERNAME10
-rest = after_scheme[11:]                         # #pass:word@@host:5432/dbname (skip the :)
-last_at = rest.rfind('@')                        # find last @ (separates password from host)
-password = rest[:last_at]                        # #pass:word@
-hostport_db = rest[last_at+1:]                   # host:5432/dbname
-db_name = hostport_db.split('/')[-1].split('?')[0]  # dbname
-hostport = hostport_db.rsplit('/', 1)[0]         # host:5432
-admin_url = f'postgresql://{user}:{password}@{hostport}/postgres'
+params = parse_dsn(db_url)
+db_name = params['dbname']
+params['dbname'] = 'postgres'
 try:
-    conn = psycopg2.connect(admin_url)
+    conn = psycopg2.connect(**params)
     conn.autocommit = True
     cur = conn.cursor()
     cur.execute('SELECT 1 FROM pg_database WHERE datname = %s', (db_name,))
