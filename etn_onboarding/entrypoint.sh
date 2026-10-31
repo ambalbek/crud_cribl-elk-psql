@@ -71,29 +71,62 @@ else:
 fi
 
 if [ -n "$DATABASE_URL" ]; then
-  # Ensure the database exists — connect to 'postgres' default DB and create if missing
+  # Parse DATABASE_URL into separate parts for psycopg2 keyword args.
+  # Passwords may contain %, :, @, # which break URL parsers.
+  eval $(python -c "
+import os
+url = os.environ['DATABASE_URL']
+after = url.split('://', 1)[1]
+creds_host, dbname = after.rsplit('/', 1)
+last_at = creds_host.rfind('@')
+creds = creds_host[:last_at]
+hostport = creds_host[last_at + 1:]
+colon = creds.index(':')
+user = creds[:colon]
+pw = creds[colon + 1:]
+if ':' in hostport:
+    host, port = hostport.rsplit(':', 1)
+else:
+    host, port = hostport, '5432'
+print(f'export PG_USER=\"{user}\"')
+print(f'export PG_HOST=\"{host}\"')
+print(f'export PG_PORT=\"{port}\"')
+print(f'export PG_DBNAME=\"{dbname}\"')
+")
+  # Password exported separately to avoid shell quoting issues
+  PG_PASS=$(python -c "
+import os
+url = os.environ['DATABASE_URL']
+after = url.split('://', 1)[1]
+creds_host = after.rsplit('/', 1)[0]
+last_at = creds_host.rfind('@')
+creds = creds_host[:last_at]
+colon = creds.index(':')
+print(creds[colon + 1:], end='')
+")
+  export PG_PASS
+
+  echo "DB connection: user=$PG_USER host=$PG_HOST port=$PG_PORT dbname=$PG_DBNAME"
+
+  # Helper: connect to postgres using keyword args (safe for any password)
+  PG_CONNECT="psycopg2.connect(user=os.environ['PG_USER'],password=os.environ['PG_PASS'],host=os.environ['PG_HOST'],port=os.environ['PG_PORT'],dbname=os.environ.get('PG_CONNECT_DB',os.environ['PG_DBNAME']))"
+
+  # Ensure the database exists
   echo "Ensuring database exists..."
-  python -c "
+  PG_CONNECT_DB=postgres python -c "
 import os, psycopg2
-from psycopg2.extensions import parse_dsn
-db_url = os.environ['DATABASE_URL'].strip().strip(\"'\").strip('\"')
-params = parse_dsn(db_url)
-db_name = params['dbname']
-params['dbname'] = 'postgres'
-try:
-    conn = psycopg2.connect(**params)
-    conn.autocommit = True
-    cur = conn.cursor()
-    cur.execute('SELECT 1 FROM pg_database WHERE datname = %s', (db_name,))
-    if not cur.fetchone():
-        cur.execute(f'CREATE DATABASE \"{db_name}\"')
-        print(f'Database \"{db_name}\" created.')
-    else:
-        print(f'Database \"{db_name}\" already exists.')
-    cur.close()
-    conn.close()
-except Exception as e:
-    print(f'DB create check failed (will retry connection): {e}')
+conn = $PG_CONNECT
+conn.autocommit = True
+cur = conn.cursor()
+db_name = os.environ['PG_DBNAME']
+cur.execute('SELECT 1 FROM pg_database WHERE datname = %s', (db_name,))
+if not cur.fetchone():
+    cur.execute(f'CREATE DATABASE \"{db_name}\"')
+    print(f'Database \"{db_name}\" created.')
+else:
+    print(f'Database \"{db_name}\" already exists.')
+cur.close()
+conn.close()
 " 2>&1 || true
 
   echo "Waiting for Postgres (max 120s)..."
@@ -101,17 +134,13 @@ except Exception as e:
   PG_MAX=60
   until python -c "
 import os, psycopg2
-url = os.environ['DATABASE_URL']
-# Append connect_timeout if not present
-if 'connect_timeout' not in url:
-    sep = '&' if '?' in url else '?'
-    url = url + sep + 'connect_timeout=5'
-psycopg2.connect(url)
+conn = $PG_CONNECT
+conn.close()
 print('Connected.')
 " 2>&1; do
     PG_RETRIES=$((PG_RETRIES + 1))
     if [ "$PG_RETRIES" -ge "$PG_MAX" ]; then
-      echo "FATAL: Postgres not reachable after ${PG_MAX} attempts (120s). DATABASE_URL=${DATABASE_URL%@*}@***"
+      echo "FATAL: Postgres not reachable after ${PG_MAX} attempts (120s)"
       exit 1
     fi
     echo "Postgres not ready, retrying in 2s... ($PG_RETRIES/$PG_MAX)"
@@ -122,7 +151,7 @@ print('Connected.')
   echo "Ensuring enum types exist..."
   python -c "
 import os, psycopg2
-conn = psycopg2.connect(os.environ['DATABASE_URL'])
+conn = $PG_CONNECT
 conn.autocommit = True
 cur = conn.cursor()
 for stmt in [
@@ -139,7 +168,7 @@ print('Enum types ready.')
   echo "Running database migrations..."
   python -c "
 import os, glob, psycopg2
-conn = psycopg2.connect(os.environ['DATABASE_URL'])
+conn = $PG_CONNECT
 conn.autocommit = True
 cur = conn.cursor()
 
@@ -165,8 +194,6 @@ for f in glob.glob('migrations/versions/*.py'):
     known.add(base)
 
 if has_version and current_rev not in known:
-    # DB references a revision that no longer exists (e.g. removed 009)
-    # Find the latest known revision by filename sort
     latest = sorted(known)[-1] if known else None
     if latest:
         print(f'alembic_version references unknown revision \"{current_rev}\" — resetting to \"{latest}\"')
@@ -180,7 +207,7 @@ elif tables_exist and not has_version:
     conn.close()
     import subprocess, sys
     subprocess.run([sys.executable, '-m', 'flask', '--app', 'wsgi:app', 'db', 'stamp', '001_initial'], check=True)
-    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    conn = $PG_CONNECT
     conn.autocommit = True
     cur = conn.cursor()
 else:
