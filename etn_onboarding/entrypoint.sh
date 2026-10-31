@@ -73,16 +73,13 @@ if [ -n "$DATABASE_URL" ]; then
   echo "Ensuring database exists..."
   python -c "
 import os, psycopg2
-from urllib.parse import urlparse
-url = urlparse(os.environ['DATABASE_URL'])
-db_name = url.path.lstrip('/')
-# Connect to default 'postgres' DB to check/create
+db_url = os.environ['DATABASE_URL']
+# Extract db name from the end of the URL (after last /)
+db_name = db_url.rsplit('/', 1)[-1].split('?')[0]
+# Build postgres admin URL by replacing the db name with 'postgres'
+admin_url = db_url.rsplit('/', 1)[0] + '/postgres'
 try:
-    conn = psycopg2.connect(
-        host=url.hostname, port=url.port or 5432,
-        user=url.username, password=url.password,
-        dbname='postgres'
-    )
+    conn = psycopg2.connect(admin_url)
     conn.autocommit = True
     cur = conn.cursor()
     cur.execute('SELECT 1 FROM pg_database WHERE datname = %s', (db_name,))
