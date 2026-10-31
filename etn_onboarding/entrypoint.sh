@@ -72,17 +72,21 @@ if [ -n "$DATABASE_URL" ]; then
   # Ensure the database exists — connect to 'postgres' default DB and create if missing
   echo "Ensuring database exists..."
   python -c "
-import os, re, psycopg2
+import os, psycopg2
 db_url = os.environ['DATABASE_URL']
-# URL format: postgresql://username:password@host:5432/dbname
-# username is 10 alphanumeric chars after ://
-# password is everything between the first : after username and the last @
-m = re.match(r'(postgresql://)([a-zA-Z0-9]{10}):(.+)@(.+)/([^?]+)', db_url)
-if not m:
-    print(f'Cannot parse DATABASE_URL')
-    raise SystemExit(1)
-scheme, user, password, hostport, db_name = m.group(1, 2, 3, 4, 5)
-admin_url = f'{scheme}{user}:{password}@{hostport}/postgres'
+# URL: postgresql://USERNAME10:#pass:word@@host:5432/dbname
+# Username is exactly 10 chars after ://
+# Password has special chars including : and @
+# dbname is after the last /
+after_scheme = db_url.split('://', 1)[1]       # USERNAME10:#pass:word@@host:5432/dbname
+user = after_scheme[:10]                         # USERNAME10
+rest = after_scheme[11:]                         # #pass:word@@host:5432/dbname (skip the :)
+last_at = rest.rfind('@')                        # find last @ (separates password from host)
+password = rest[:last_at]                        # #pass:word@
+hostport_db = rest[last_at+1:]                   # host:5432/dbname
+db_name = hostport_db.split('/')[-1].split('?')[0]  # dbname
+hostport = hostport_db.rsplit('/', 1)[0]         # host:5432
+admin_url = f'postgresql://{user}:{password}@{hostport}/postgres'
 try:
     conn = psycopg2.connect(admin_url)
     conn.autocommit = True
