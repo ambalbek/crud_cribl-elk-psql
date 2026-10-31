@@ -20,7 +20,7 @@ except ImportError:
 
 logger = logging.getLogger("etn-onboarding")
 
-CONFIG_PATH = Path(os.environ.get("APP_CONFIG_PATH", "/app/config.json"))
+CONFIG_PATH = Path(os.environ.get("APP_CONFIG_PATH", str(Path(__file__).resolve().parent.parent / "config.json")))
 
 
 def _load_config_json() -> dict:

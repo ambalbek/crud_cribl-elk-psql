@@ -729,7 +729,7 @@ def fetch_role_mappings(cluster, global_skip_ssl=None):
             url,
             auth=HTTPBasicAuth(cluster['username'], cluster['password']),
             verify=not skip_ssl,
-            timeout=(10, 120),
+            timeout=(3, 10),
         )
         elapsed = time.time() - start
         log.info("Cluster [%s] — %d response in %.2fs", cluster['name'], resp.status_code, elapsed)
@@ -2634,17 +2634,21 @@ def _build_catalog(config: dict) -> list:
         log.info("catalog — no apps found; returning empty catalog")
         return []
 
-    # ── 2. ELK role mappings from all entitlement clusters ────────────────────
+    # ── 2. ELK role mappings from all entitlement clusters (parallel) ──────────
     ent_cfg  = config.get("entitlement", {})
     clusters = _resolve_entitlement_clusters(ent_cfg)
     all_role_mappings: dict = {}
-    for cluster in clusters:
-        try:
-            mappings = fetch_role_mappings(cluster)
-            all_role_mappings.update(mappings)
-        except Exception as exc:
-            log.warning("catalog — role mapping fetch failed cluster=%s: %s",
-                        cluster.get("name"), exc)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=min(len(clusters), 5) or 1) as pool:
+        futs = {pool.submit(fetch_role_mappings, cluster): cluster for cluster in clusters}
+        for fut in as_completed(futs, timeout=15):
+            cluster = futs[fut]
+            try:
+                mappings = fut.result()
+                all_role_mappings.update(mappings)
+            except Exception as exc:
+                log.warning("catalog — role mapping fetch failed cluster=%s: %s",
+                            cluster.get("name"), exc)
 
     # ── 3. Cribl routes for every workspace / worker group ────────────────────
     workspaces = {
@@ -2686,7 +2690,7 @@ def _build_catalog(config: dict) -> list:
                         f"{root_url}/api/v1/auth/login",
                         json={"username": ws_user, "password": ws_pass},
                         headers={"Content-Type": "application/json", "Accept": "application/json"},
-                        timeout=30,
+                        timeout=(5, 10),
                     )
                     if auth_r.status_code == 200:
                         auth_body = auth_r.json()
@@ -2705,7 +2709,7 @@ def _build_catalog(config: dict) -> list:
         for wg in worker_groups:
             url = f"{root_url}/api/v1/m/{wg}/routes/{routes_table}"
             try:
-                r = ws_sess.get(url, timeout=30)
+                r = ws_sess.get(url, timeout=(5, 10))
                 if r.status_code == 404:
                     log.debug("catalog — wg %s not found in ws %s, skipping", wg, ws_name)
                     continue
@@ -3059,7 +3063,25 @@ def api_catalog():
         return jsonify({"errors": [f"Could not load config.json: {exc}"]}), 500
 
     try:
-        data = _build_catalog(config)
+        import threading
+        _catalog_result = [None]
+        _catalog_error = [None]
+        def _run_build():
+            try:
+                _catalog_result[0] = _build_catalog(config)
+            except Exception as e:
+                _catalog_error[0] = e
+        t = threading.Thread(target=_run_build, daemon=True)
+        t.start()
+        t.join(timeout=25)  # ARO route timeout is ~30s, return before that
+        if t.is_alive():
+            log.warning("api/catalog — build timed out after 25s, returning partial data")
+            # Return whatever PSQL data we have without Cribl/ELK enrichment
+            data = _catalog_result[0] or []
+        elif _catalog_error[0]:
+            raise _catalog_error[0]
+        else:
+            data = _catalog_result[0] or []
         with _catalog_cache_lock:
             _catalog_cache["data"] = data
             _catalog_cache["ts"]   = time.time()
@@ -3217,7 +3239,7 @@ def api_catalog_delete(apm_id):
                         f"{root_url}/api/v1/auth/login",
                         json={"username": ws_user, "password": ws_pass},
                         headers={"Content-Type": "application/json", "Accept": "application/json"},
-                        timeout=30,
+                        timeout=(5, 10),
                     )
                     if auth_r.status_code == 200:
                         _auth_body = auth_r.json()

@@ -108,7 +108,7 @@ def use_json_logging() -> bool:
         try:
             import json as _json
             from pathlib import Path as _Path
-            _cfg_path = _Path(os.environ.get("APP_CONFIG_PATH", "/app/config.json"))
+            _cfg_path = _Path(os.environ.get("APP_CONFIG_PATH", str(_Path(__file__).resolve().parent / "config.json")))
             if _cfg_path.exists():
                 fmt = _json.loads(_cfg_path.read_text()).get("log_format", "")
         except Exception:
