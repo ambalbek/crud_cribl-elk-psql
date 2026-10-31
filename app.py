@@ -2638,17 +2638,24 @@ def _build_catalog(config: dict) -> list:
     ent_cfg  = config.get("entitlement", {})
     clusters = _resolve_entitlement_clusters(ent_cfg)
     all_role_mappings: dict = {}
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    with ThreadPoolExecutor(max_workers=min(len(clusters), 5) or 1) as pool:
-        futs = {pool.submit(fetch_role_mappings, cluster): cluster for cluster in clusters}
-        for fut in as_completed(futs, timeout=15):
-            cluster = futs[fut]
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
+    if clusters:
+        with ThreadPoolExecutor(max_workers=min(len(clusters), 5)) as pool:
+            futs = {pool.submit(fetch_role_mappings, cluster): cluster for cluster in clusters}
             try:
-                mappings = fut.result()
-                all_role_mappings.update(mappings)
-            except Exception as exc:
-                log.warning("catalog — role mapping fetch failed cluster=%s: %s",
-                            cluster.get("name"), exc)
+                for fut in as_completed(futs, timeout=15):
+                    cluster = futs[fut]
+                    try:
+                        mappings = fut.result()
+                        all_role_mappings.update(mappings)
+                        log.info("catalog — role mappings OK cluster=%s (%d mappings)",
+                                 cluster.get("name"), len(mappings))
+                    except Exception as exc:
+                        log.warning("catalog — role mapping fetch failed cluster=%s: %s",
+                                    cluster.get("name"), exc)
+            except FuturesTimeout:
+                done = sum(1 for f in futs if f.done())
+                log.warning("catalog — entitlement fetch timed out (got %d/%d clusters)", done, len(clusters))
 
     # ── 3. Cribl routes for every workspace / worker group ────────────────────
     workspaces = {
